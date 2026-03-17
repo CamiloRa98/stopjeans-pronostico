@@ -276,8 +276,7 @@ elif pagina == "📈 Pronóstico por Línea":
         hovertemplate="<b>%{x|%b %Y}</b><br>Pronóstico: %{y:,.0f}<extra></extra>",
     ))
     # Línea vertical de separación
-    fig.add_vline(x=fecha_max_hist, line_dash="dot", line_color="gray", opacity=0.7,
-                  annotation_text="Inicio Pronóstico", annotation_position="top left")
+    fig.add_vline(x=fecha_max_hist, line_dash="dot", line_color="gray", opacity=0.7)
 
     fig.update_layout(
         title=f"Línea: {linea_sel}",
