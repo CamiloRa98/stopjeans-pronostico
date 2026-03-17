@@ -417,7 +417,7 @@ elif pagina == "🏢 Visión Total":
     comp_linea = comp_linea.sort_values("TOTAL", ascending=False)
 
     st.dataframe(
-        comp_linea.style.format("{:,.0f}").background_gradient(cmap="Blues", axis=None),
+        comp_linea.style.format("{:,.0f}"),
         use_container_width=True,
     )
 
