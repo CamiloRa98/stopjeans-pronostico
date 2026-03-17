@@ -97,8 +97,20 @@ for linea in pron["Linea"].unique():
     if pct_ceros > 0.5 or vals.sum() < 500:
         LINEAS_ADVERTENCIA.add(linea)
 
-LINEAS_ACTIVAS = sorted([l for l in pron["Linea"].unique() if l not in LINEAS_ADVERTENCIA])
-TODAS_LINEAS = sorted(pron["Linea"].unique())
+# Orden oficial de líneas de producto
+ORDEN_LINEAS = [
+    "PANTALON", "CAMISETA", "BLUSA", "CORTOS", "SOBRETODO", "CALZADO",
+    "DEPORTIVO", "PANTALONES DE MODA", "ACCESORIOS", "PRODUCTOS DE MODA",
+    "ROPA INTERIOR", "MARROQUINERIA",
+]
+
+def ordenar_lineas(lista):
+    """Ordena una lista de líneas según ORDEN_LINEAS; las no listadas van al final."""
+    orden_map = {l: i for i, l in enumerate(ORDEN_LINEAS)}
+    return sorted(lista, key=lambda x: orden_map.get(x, 999))
+
+LINEAS_ACTIVAS = ordenar_lineas([l for l in pron["Linea"].unique() if l not in LINEAS_ADVERTENCIA])
+TODAS_LINEAS = ordenar_lineas(list(pron["Linea"].unique()))
 
 # ─── Datos agregados ───────────────────────────────────────────────────
 hist_mensual = hist.groupby(["fecha", "Linea"])["Cantidad"].sum().reset_index()
@@ -177,7 +189,7 @@ st.sidebar.markdown(f'<p style="text-align:center; color:{GRIS_MEDIO}; font-size
 st.sidebar.markdown("---")
 pagina = st.sidebar.radio(
     "Navegación",
-    ["📊 Resumen Ejecutivo", "📈 Pronóstico por Línea", "🏢 Visión Total", "📅 Próximo Mes"],
+    ["📊 Resumen Ejecutivo", "📈 Pronóstico por Línea", "🏢 Visión Total", "📆 Mes en Curso"],
     index=0,
 )
 st.sidebar.markdown("---")
@@ -194,22 +206,27 @@ if pagina == "📊 Resumen Ejecutivo":
     st.markdown('<p class="main-header">Resumen Ejecutivo — Pronóstico de Ventas</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="sub-header">Proyección a 12 meses desde {primer_mes_pron.strftime("%B %Y")} | Líneas activas: {len(LINEAS_ACTIVAS)}</p>', unsafe_allow_html=True)
 
-    total_12m = pron_activo["Cantidad_Pronosticada"].sum()
-    total_mes1 = pron_activo[pron_activo["fecha"] == primer_mes_pron]["Cantidad_Pronosticada"].sum()
+    # Filtro de mes
     fechas_pron = sorted(pron_activo["fecha"].unique())
+    opciones_mes = {f.strftime("%B %Y"): f for f in pd.to_datetime(fechas_pron)}
+    mes_sel_label = st.selectbox("Seleccione un mes:", list(opciones_mes.keys()), index=0)
+    mes_sel = opciones_mes[mes_sel_label]
+
+    total_12m = pron_activo["Cantidad_Pronosticada"].sum()
+    total_mes_sel = pron_activo[pron_activo["fecha"] == mes_sel]["Cantidad_Pronosticada"].sum()
     total_q1 = pron_activo[pron_activo["fecha"].isin(fechas_pron[:3])]["Cantidad_Pronosticada"].sum()
 
-    mes_ant = primer_mes_pron - pd.DateOffset(years=1)
+    mes_ant = mes_sel - pd.DateOffset(years=1)
     real_mes_ant = hist_mensual[
         (hist_mensual["fecha"] == mes_ant) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
     ]["Cantidad"].sum()
-    delta_pct = ((total_mes1 - real_mes_ant) / real_mes_ant * 100) if real_mes_ant > 0 else 0
+    delta_pct = ((total_mes_sel - real_mes_ant) / real_mes_ant * 100) if real_mes_ant > 0 else 0
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric(
-            label=f"Pronóstico {primer_mes_pron.strftime('%b %Y')}",
-            value=f"{total_mes1:,.0f} uds",
+            label=f"Pronóstico {mes_sel.strftime('%b %Y')}",
+            value=f"{total_mes_sel:,.0f} uds",
             delta=f"{delta_pct:+.1f}% vs {mes_ant.strftime('%b %Y')}",
         )
     with col2:
@@ -225,11 +242,14 @@ if pagina == "📊 Resumen Ejecutivo":
     col_left, col_right = st.columns([3, 2])
 
     with col_left:
-        st.subheader(f"Volumen por Línea — {primer_mes_pron.strftime('%B %Y')}")
-        df_mes1 = pron_activo[pron_activo["fecha"] == primer_mes_pron][["Linea", "Cantidad_Pronosticada"]].copy()
-        df_mes1 = df_mes1.sort_values("Cantidad_Pronosticada", ascending=True)
+        st.subheader(f"Volumen por Línea — {mes_sel.strftime('%B %Y')}")
+        df_mes_sel = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Cantidad_Pronosticada"]].copy()
+        # Orden fijo de líneas (invertido para barras horizontales)
+        orden_activas_rev = list(reversed(LINEAS_ACTIVAS))
+        df_mes_sel["Linea"] = pd.Categorical(df_mes_sel["Linea"], categories=orden_activas_rev, ordered=True)
+        df_mes_sel = df_mes_sel.sort_values("Linea")
         fig = px.bar(
-            df_mes1, x="Cantidad_Pronosticada", y="Linea",
+            df_mes_sel, x="Cantidad_Pronosticada", y="Linea",
             orientation="h",
             color="Cantidad_Pronosticada",
             color_continuous_scale=ESCALA_BARRAS,
@@ -245,9 +265,11 @@ if pagina == "📊 Resumen Ejecutivo":
         st.plotly_chart(fig, use_container_width=True)
 
     with col_right:
-        st.subheader("Participación por Línea (12 meses)")
-        df_part = pron_activo.groupby("Linea")["Cantidad_Pronosticada"].sum().reset_index()
-        df_part = df_part.sort_values("Cantidad_Pronosticada", ascending=False)
+        st.subheader(f"Participación por Línea — {mes_sel.strftime('%B %Y')}")
+        df_part = pron_activo[pron_activo["fecha"] == mes_sel].groupby("Linea")["Cantidad_Pronosticada"].sum().reset_index()
+        # Orden fijo
+        df_part["Linea"] = pd.Categorical(df_part["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
+        df_part = df_part.sort_values("Linea")
         fig2 = px.pie(
             df_part, values="Cantidad_Pronosticada", names="Linea",
             color_discrete_sequence=PALETA_LINEAS,
@@ -258,14 +280,34 @@ if pagina == "📊 Resumen Ejecutivo":
                            paper_bgcolor=BLANCO)
         st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader("Resumen por Línea")
+    st.subheader(f"Detalle por Línea — {mes_sel.strftime('%B %Y')}")
+    df_detalle_mes = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Modelo", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
+    df_detalle_mes["Linea"] = pd.Categorical(df_detalle_mes["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
+    df_detalle_mes = df_detalle_mes.sort_values("Linea")
+    st.dataframe(
+        df_detalle_mes.rename(columns={
+            "Cantidad_Pronosticada": "Pronóstico",
+            "Limite_Inferior": "Lím. Inferior",
+            "Limite_Superior": "Lím. Superior",
+        }).style.format({
+            "Pronóstico": "{:,.0f}",
+            "Lím. Inferior": "{:,.0f}",
+            "Lím. Superior": "{:,.0f}",
+        }),
+        use_container_width=True, hide_index=True,
+    )
+
+    st.markdown("---")
+    st.subheader("Resumen Anual por Línea (12 meses)")
     resumen = pron_activo.groupby("Linea").agg(
         Modelo=("Modelo", "first"),
         Total_12M=("Cantidad_Pronosticada", "sum"),
         Promedio_Mes=("Cantidad_Pronosticada", "mean"),
         Rango_Inferior=("Limite_Inferior", "sum"),
         Rango_Superior=("Limite_Superior", "sum"),
-    ).reset_index().sort_values("Total_12M", ascending=False)
+    ).reset_index()
+    resumen["Linea"] = pd.Categorical(resumen["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
+    resumen = resumen.sort_values("Linea")
     resumen["Promedio_Mes"] = resumen["Promedio_Mes"].round(0).astype(int)
     st.dataframe(
         resumen.rename(columns={
@@ -288,7 +330,7 @@ if pagina == "📊 Resumen Ejecutivo":
 elif pagina == "📈 Pronóstico por Línea":
     st.markdown('<p class="main-header">Pronóstico por Línea de Producto</p>', unsafe_allow_html=True)
 
-    linea_sel = st.selectbox("Seleccione una línea:", TODAS_LINEAS, index=TODAS_LINEAS.index(LINEAS_ACTIVAS[0]) if LINEAS_ACTIVAS else 0)
+    linea_sel = st.selectbox("Seleccione una línea:", TODAS_LINEAS, index=0)
 
     if linea_sel in LINEAS_ADVERTENCIA:
         st.warning(f"La línea **{linea_sel}** tiene datos insuficientes o ventas cercanas a cero. El pronóstico puede no ser confiable.")
@@ -387,18 +429,12 @@ elif pagina == "📈 Pronóstico por Línea":
     with col_comp:
         st.subheader("Comparativa Interanual")
         ultimo_ano_hist = hist_linea[hist_linea["fecha"] >= (fecha_max_hist - pd.DateOffset(months=11))]
-        if len(ultimo_ano_hist) > 0 and len(pron_linea) > 0:
+        if len(ultimo_ano_hist) > 0:
             comp = pd.DataFrame({
                 "Mes": [f.strftime("%b") for f in ultimo_ano_hist["fecha"]],
                 f"Real {ultimo_ano_hist['fecha'].dt.year.iloc[0]}": ultimo_ano_hist["Cantidad"].values,
             })
-            comp2 = pd.DataFrame({
-                "Mes": [f.strftime("%b") for f in pron_linea["fecha"]],
-                f"Pronóstico {pron_linea['fecha'].dt.year.iloc[0]}": pron_linea["Cantidad_Pronosticada"].values,
-            })
             st.dataframe(comp.style.format({col: "{:,.0f}" for col in comp.columns if col != "Mes"}),
-                         use_container_width=True, hide_index=True)
-            st.dataframe(comp2.style.format({col: "{:,.0f}" for col in comp2.columns if col != "Mes"}),
                          use_container_width=True, hide_index=True)
 
 
@@ -513,7 +549,10 @@ elif pagina == "🏢 Visión Total":
     cols_ord = [f.strftime("%b %Y") for f in pd.to_datetime(fechas_ord)]
     comp_linea = comp_linea[[c for c in cols_ord if c in comp_linea.columns]]
     comp_linea["TOTAL"] = comp_linea.sum(axis=1)
-    comp_linea = comp_linea.sort_values("TOTAL", ascending=False)
+    # Orden fijo de líneas
+    orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
+    comp_linea["_orden"] = comp_linea.index.map(lambda x: orden_idx.get(x, 999))
+    comp_linea = comp_linea.sort_values("_orden").drop(columns=["_orden"])
 
     st.dataframe(
         comp_linea.style.format("{:,.0f}"),
@@ -522,118 +561,144 @@ elif pagina == "🏢 Visión Total":
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# PÁGINA 4: PRÓXIMO MES
+# PÁGINA 5: MES EN CURSO
 # ═══════════════════════════════════════════════════════════════════════
-elif pagina == "📅 Próximo Mes":
-    st.markdown(f'<p class="main-header">Próximo Mes: {primer_mes_pron.strftime("%B %Y")}</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Pronóstico detallado del mes más inmediato</p>', unsafe_allow_html=True)
+elif pagina == "📆 Mes en Curso":
+    # El mes en curso es el primer mes del pronóstico (donde ya hay datos parciales)
+    mes_curso = primer_mes_pron
+    mes_curso_fin = mes_curso + pd.offsets.MonthEnd(0)
+    dia_max_hist = hist["fecha"].max()
 
-    df_mes = pron_activo[pron_activo["fecha"] == primer_mes_pron].copy()
-    df_mes = df_mes.sort_values("Cantidad_Pronosticada", ascending=False)
+    st.markdown(f'<p class="main-header">Mes en Curso: {mes_curso.strftime("%B %Y")}</p>', unsafe_allow_html=True)
 
-    mes_anterior_ano = primer_mes_pron - pd.DateOffset(years=1)
-    hist_mes_ant = hist_mensual[
-        (hist_mensual["fecha"] == mes_anterior_ano) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
-    ]
+    # Ventas reales del mes en curso (parciales)
+    hist_mes_curso = hist_mensual[
+        (hist_mensual["fecha"].dt.year == mes_curso.year)
+        & (hist_mensual["fecha"].dt.month == mes_curso.month)
+        & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+    ].copy()
 
-    df_comp = df_mes[["Linea", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior", "Modelo"]].merge(
-        hist_mes_ant[["Linea", "Cantidad"]].rename(columns={"Cantidad": "Real_Año_Anterior"}),
+    # Pronóstico del mes en curso
+    pron_mes_curso = pron_activo[pron_activo["fecha"] == mes_curso].copy()
+    pron_mes_curso = pron_mes_curso.sort_values("Cantidad_Pronosticada", ascending=False)
+
+    # Calcular días transcurridos y días totales del mes
+    dias_transcurridos = dia_max_hist.day
+    dias_mes = mes_curso_fin.day
+    pct_mes = dias_transcurridos / dias_mes
+
+    # Proyección de cierre: (venta parcial / % del mes transcurrido)
+    df_curso = pron_mes_curso[["Linea", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior", "Modelo"]].merge(
+        hist_mes_curso[["Linea", "Cantidad"]].rename(columns={"Cantidad": "Venta_Parcial"}),
         on="Linea", how="left",
     )
-    df_comp["Real_Año_Anterior"] = df_comp["Real_Año_Anterior"].fillna(0)
-    df_comp["Crecimiento_%"] = (
-        (df_comp["Cantidad_Pronosticada"] - df_comp["Real_Año_Anterior"])
-        / df_comp["Real_Año_Anterior"].replace(0, 1) * 100
-    ).round(1)
-    df_comp = df_comp.sort_values("Cantidad_Pronosticada", ascending=False)
+    df_curso["Venta_Parcial"] = df_curso["Venta_Parcial"].fillna(0)
+    df_curso["Proyeccion_Cierre"] = (df_curso["Venta_Parcial"] / pct_mes).round(0) if pct_mes > 0 else df_curso["Venta_Parcial"]
+    df_curso["Cumplimiento_%"] = (df_curso["Venta_Parcial"] / df_curso["Cantidad_Pronosticada"].replace(0, 1) * 100).round(1)
+    df_curso["Linea"] = pd.Categorical(df_curso["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
+    df_curso = df_curso.sort_values("Linea")
 
-    total_mes = df_comp["Cantidad_Pronosticada"].sum()
-    total_ant = df_comp["Real_Año_Anterior"].sum()
-    crec_total = ((total_mes - total_ant) / total_ant * 100) if total_ant > 0 else 0
+    # Totales
+    total_parcial = df_curso["Venta_Parcial"].sum()
+    total_pron_mes = df_curso["Cantidad_Pronosticada"].sum()
+    total_proyeccion = df_curso["Proyeccion_Cierre"].sum()
+    cumplimiento_total = (total_parcial / total_pron_mes * 100) if total_pron_mes > 0 else 0
 
-    col1, col2, col3 = st.columns(3)
+    st.markdown(f'<p class="sub-header">Datos reales al día {dias_transcurridos} de {dias_mes} ({pct_mes:.0%} del mes transcurrido)</p>', unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric(
-            f"Total {primer_mes_pron.strftime('%b %Y')}",
-            f"{total_mes:,.0f} uds",
-            f"{crec_total:+.1f}% vs {mes_anterior_ano.strftime('%b %Y')}",
-        )
+        st.metric("Venta Parcial", f"{total_parcial:,.0f} uds", f"{cumplimiento_total:.1f}% del pronóstico")
     with col2:
-        top_linea = df_comp.iloc[0]["Linea"] if len(df_comp) > 0 else "N/A"
-        top_val = df_comp.iloc[0]["Cantidad_Pronosticada"] if len(df_comp) > 0 else 0
-        st.metric("Línea Líder", f"{top_linea}", f"{top_val:,.0f} uds")
+        st.metric("Pronóstico Mes Completo", f"{total_pron_mes:,.0f} uds")
     with col3:
-        n_crecen = (df_comp["Crecimiento_%"] > 0).sum()
-        st.metric("Líneas en Crecimiento", f"{n_crecen} de {len(df_comp)}")
+        st.metric("Proyección de Cierre", f"{total_proyeccion:,.0f} uds")
+    with col4:
+        dif_proy_pron = ((total_proyeccion - total_pron_mes) / total_pron_mes * 100) if total_pron_mes > 0 else 0
+        color_dif = POSITIVO if dif_proy_pron >= 0 else NEGATIVO
+        st.metric("Proyección vs Pronóstico", f"{dif_proy_pron:+.1f}%")
 
     st.markdown("---")
 
     col_g1, col_g2 = st.columns([3, 2])
 
     with col_g1:
-        st.subheader(f"Comparativa: {primer_mes_pron.strftime('%b %Y')} vs {mes_anterior_ano.strftime('%b %Y')}")
-        fig_comp = go.Figure()
-        fig_comp.add_trace(go.Bar(
-            y=df_comp["Linea"], x=df_comp["Real_Año_Anterior"],
-            name=f"Real {mes_anterior_ano.strftime('%b %Y')}",
+        st.subheader("Venta Parcial vs Pronóstico por Línea")
+        fig_curso = go.Figure()
+        fig_curso.add_trace(go.Bar(
+            y=df_curso["Linea"], x=df_curso["Venta_Parcial"],
+            name=f"Venta al día {dias_transcurridos}",
             orientation="h", marker_color=GRIS_CLARO,
-            text=df_comp["Real_Año_Anterior"].apply(lambda x: f"{x:,.0f}"),
+            text=df_curso["Venta_Parcial"].apply(lambda x: f"{x:,.0f}"),
             textposition="inside",
         ))
-        fig_comp.add_trace(go.Bar(
-            y=df_comp["Linea"], x=df_comp["Cantidad_Pronosticada"],
-            name=f"Pronóstico {primer_mes_pron.strftime('%b %Y')}",
+        fig_curso.add_trace(go.Bar(
+            y=df_curso["Linea"], x=df_curso["Cantidad_Pronosticada"],
+            name="Pronóstico Mes Completo",
             orientation="h", marker_color=NEGRO,
-            text=df_comp["Cantidad_Pronosticada"].apply(lambda x: f"{x:,.0f}"),
+            text=df_curso["Cantidad_Pronosticada"].apply(lambda x: f"{x:,.0f}"),
             textposition="inside", textfont=dict(color=BLANCO),
         ))
-        fig_comp.update_layout(
-            barmode="group", height=400,
+        fig_curso.add_trace(go.Scatter(
+            y=df_curso["Linea"], x=df_curso["Proyeccion_Cierre"],
+            name="Proyección de Cierre",
+            mode="markers",
+            marker=dict(size=12, symbol="diamond", color=ACENTO, line=dict(width=1, color=BLANCO)),
+            hovertemplate="<b>%{y}</b><br>Proyección cierre: %{x:,.0f}<extra></extra>",
+        ))
+        fig_curso.update_layout(
+            barmode="group", height=420,
             margin=dict(l=10, r=20, t=10, b=30),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             xaxis_title="Unidades",
             **PLOTLY_LAYOUT,
         )
-        st.plotly_chart(fig_comp, use_container_width=True)
+        st.plotly_chart(fig_curso, use_container_width=True)
 
     with col_g2:
-        st.subheader("Crecimiento por Línea")
-        df_crec = df_comp[["Linea", "Crecimiento_%"]].sort_values("Crecimiento_%", ascending=True)
-        colores = [POSITIVO if v > 0 else NEGATIVO for v in df_crec["Crecimiento_%"]]
-        fig_crec = go.Figure(go.Bar(
-            y=df_crec["Linea"], x=df_crec["Crecimiento_%"],
-            orientation="h", marker_color=colores,
-            text=df_crec["Crecimiento_%"].apply(lambda x: f"{x:+.1f}%"),
+        st.subheader("Cumplimiento por Línea")
+        df_cump = df_curso[["Linea", "Cumplimiento_%"]].sort_values("Cumplimiento_%", ascending=True)
+        colores_cump = [POSITIVO if v >= pct_mes * 100 else NEGATIVO for v in df_cump["Cumplimiento_%"]]
+        fig_cump = go.Figure(go.Bar(
+            y=df_cump["Linea"], x=df_cump["Cumplimiento_%"],
+            orientation="h", marker_color=colores_cump,
+            text=df_cump["Cumplimiento_%"].apply(lambda x: f"{x:.1f}%"),
             textposition="outside",
         ))
-        fig_crec.update_layout(
-            height=400, xaxis_title="% Crecimiento",
+        fig_cump.add_vline(x=pct_mes * 100, line_dash="dash", line_color=GRIS_MEDIO, opacity=0.7)
+        fig_cump.update_layout(
+            height=420, xaxis_title="% Cumplimiento del Pronóstico",
             margin=dict(l=10, r=60, t=10, b=30),
             **PLOTLY_LAYOUT,
         )
-        st.plotly_chart(fig_crec, use_container_width=True)
+        st.plotly_chart(fig_cump, use_container_width=True)
 
     st.subheader("Detalle por Línea")
-    cols_detalle = ["Linea", "Modelo", "Real_Año_Anterior", "Cantidad_Pronosticada",
-                    "Limite_Inferior", "Limite_Superior", "Crecimiento_%"]
-    nombres = {
-        "Real_Año_Anterior": f"Real {mes_anterior_ano.strftime('%b %Y')}",
-        "Cantidad_Pronosticada": f"Pronóstico {primer_mes_pron.strftime('%b %Y')}",
+    cols_curso = ["Linea", "Modelo", "Venta_Parcial", "Cantidad_Pronosticada",
+                  "Limite_Inferior", "Limite_Superior", "Proyeccion_Cierre", "Cumplimiento_%"]
+    nombres_curso = {
+        "Venta_Parcial": f"Venta al día {dias_transcurridos}",
+        "Cantidad_Pronosticada": "Pronóstico Mes",
         "Limite_Inferior": "Lím. Inferior",
         "Limite_Superior": "Lím. Superior",
-        "Crecimiento_%": "Crecimiento %",
+        "Proyeccion_Cierre": "Proyección Cierre",
+        "Cumplimiento_%": "Cumplimiento %",
     }
-    fmt_detalle = {
-        f"Real {mes_anterior_ano.strftime('%b %Y')}": "{:,.0f}",
-        f"Pronóstico {primer_mes_pron.strftime('%b %Y')}": "{:,.0f}",
+    fmt_curso = {
+        f"Venta al día {dias_transcurridos}": "{:,.0f}",
+        "Pronóstico Mes": "{:,.0f}",
         "Lím. Inferior": "{:,.0f}",
         "Lím. Superior": "{:,.0f}",
-        "Crecimiento %": "{:+.1f}%",
+        "Proyección Cierre": "{:,.0f}",
+        "Cumplimiento %": "{:.1f}%",
     }
     st.dataframe(
-        df_comp[cols_detalle].rename(columns=nombres).style.format(fmt_detalle),
+        df_curso[cols_curso].rename(columns=nombres_curso).style.format(fmt_curso),
         use_container_width=True, hide_index=True,
     )
+
+    st.markdown(f'<div class="warning-box">La <b>Proyección de Cierre</b> estima el total del mes extrapolando la venta parcial al ritmo actual ({dias_transcurridos} de {dias_mes} días). Es una referencia, no un pronóstico estadístico.</div>', unsafe_allow_html=True)
+
 
 # ─── Footer ────────────────────────────────────────────────────────────
 st.markdown("---")
