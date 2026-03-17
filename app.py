@@ -76,6 +76,13 @@ def cargar_pronostico():
     df = pd.read_csv(PRONOSTICO_CSV)
     df["fecha"] = pd.to_datetime(df["fecha"])
     df["Cantidad_Pronosticada"] = df["Cantidad_Pronosticada"].clip(lower=0)
+    # Intervalos de confianza (compatibilidad si el CSV aún no los tiene)
+    if "Limite_Inferior" not in df.columns:
+        df["Limite_Inferior"] = df["Cantidad_Pronosticada"]
+    if "Limite_Superior" not in df.columns:
+        df["Limite_Superior"] = df["Cantidad_Pronosticada"]
+    df["Limite_Inferior"] = df["Limite_Inferior"].clip(lower=0)
+    df["Limite_Superior"] = df["Limite_Superior"].clip(lower=0)
     return df
 
 
@@ -98,7 +105,11 @@ hist_mensual = hist.groupby(["fecha", "Linea"])["Cantidad"].sum().reset_index()
 hist_total = hist.groupby("fecha")["Cantidad"].sum().reset_index()
 
 pron_activo = pron[pron["Linea"].isin(LINEAS_ACTIVAS)]
-pron_total = pron_activo.groupby("fecha")["Cantidad_Pronosticada"].sum().reset_index()
+pron_total = pron_activo.groupby("fecha").agg(
+    Cantidad_Pronosticada=("Cantidad_Pronosticada", "sum"),
+    Limite_Inferior=("Limite_Inferior", "sum"),
+    Limite_Superior=("Limite_Superior", "sum"),
+).reset_index()
 
 fecha_max_hist = hist["fecha"].max()
 primer_mes_pron = pron_activo["fecha"].min()
@@ -252,14 +263,17 @@ if pagina == "📊 Resumen Ejecutivo":
         Modelo=("Modelo", "first"),
         Total_12M=("Cantidad_Pronosticada", "sum"),
         Promedio_Mes=("Cantidad_Pronosticada", "mean"),
-        Mes_Max=("Cantidad_Pronosticada", "max"),
-        Mes_Min=("Cantidad_Pronosticada", "min"),
+        Rango_Inferior=("Limite_Inferior", "sum"),
+        Rango_Superior=("Limite_Superior", "sum"),
     ).reset_index().sort_values("Total_12M", ascending=False)
     resumen["Promedio_Mes"] = resumen["Promedio_Mes"].round(0).astype(int)
     st.dataframe(
-        resumen.style.format({
+        resumen.rename(columns={
+            "Rango_Inferior": "Total Lím. Inf.",
+            "Rango_Superior": "Total Lím. Sup.",
+        }).style.format({
             "Total_12M": "{:,.0f}", "Promedio_Mes": "{:,.0f}",
-            "Mes_Max": "{:,.0f}", "Mes_Min": "{:,.0f}",
+            "Total Lím. Inf.": "{:,.0f}", "Total Lím. Sup.": "{:,.0f}",
         }),
         use_container_width=True, hide_index=True,
     )
@@ -318,6 +332,22 @@ elif pagina == "📈 Pronóstico por Línea":
             mode="lines", showlegend=False,
             line=dict(color=ACENTO, width=1.5, dash="dot"),
         ))
+    # Intervalo de confianza (área sombreada)
+    tiene_intervalo = not (pron_linea["Limite_Inferior"] == pron_linea["Limite_Superior"]).all()
+    if tiene_intervalo:
+        fig.add_trace(go.Scatter(
+            x=pron_linea["fecha"], y=pron_linea["Limite_Superior"],
+            mode="lines", name="Límite Superior",
+            line=dict(width=0), showlegend=False,
+            hovertemplate="<b>%{x|%b %Y}</b><br>Límite superior: %{y:,.0f}<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=pron_linea["fecha"], y=pron_linea["Limite_Inferior"],
+            mode="lines", name="Intervalo 80%",
+            line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(200,16,46,0.12)",
+            hovertemplate="<b>%{x|%b %Y}</b><br>Límite inferior: %{y:,.0f}<extra></extra>",
+        ))
     fig.add_trace(go.Scatter(
         x=pron_linea["fecha"], y=pron_linea["Cantidad_Pronosticada"],
         mode="lines+markers", name="Pronóstico",
@@ -340,11 +370,17 @@ elif pagina == "📈 Pronóstico por Línea":
     col_tabla, col_comp = st.columns([3, 2])
     with col_tabla:
         st.subheader("Pronóstico Mensual")
-        tabla_pron = pron_linea[["fecha", "Cantidad_Pronosticada"]].copy()
+        tabla_pron = pron_linea[["fecha", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
         tabla_pron["Mes"] = tabla_pron["fecha"].dt.strftime("%B %Y")
-        tabla_pron = tabla_pron.rename(columns={"Cantidad_Pronosticada": "Unidades"})
+        cols_mostrar = ["Mes", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]
+        tabla_pron = tabla_pron.rename(columns={
+            "Cantidad_Pronosticada": "Pronóstico",
+            "Limite_Inferior": "Lím. Inferior",
+            "Limite_Superior": "Lím. Superior",
+        })
+        fmt = {"Pronóstico": "{:,.0f}", "Lím. Inferior": "{:,.0f}", "Lím. Superior": "{:,.0f}"}
         st.dataframe(
-            tabla_pron[["Mes", "Unidades"]].style.format({"Unidades": "{:,.0f}"}),
+            tabla_pron[["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"]].style.format(fmt),
             use_container_width=True, hide_index=True,
         )
 
@@ -390,12 +426,25 @@ elif pagina == "🏢 Visión Total":
             mode="lines", showlegend=False,
             line=dict(color=ACENTO, width=1.5, dash="dot"),
         ))
+    # Intervalo de confianza agregado
+    tiene_intervalo_total = not (pron_total["Limite_Inferior"] == pron_total["Limite_Superior"]).all()
+    if tiene_intervalo_total:
+        fig.add_trace(go.Scatter(
+            x=pron_total["fecha"], y=pron_total["Limite_Superior"],
+            mode="lines", name="Límite Superior", line=dict(width=0), showlegend=False,
+            hovertemplate="<b>%{x|%b %Y}</b><br>Límite superior: %{y:,.0f}<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=pron_total["fecha"], y=pron_total["Limite_Inferior"],
+            mode="lines", name="Intervalo 80%", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(200,16,46,0.12)",
+            hovertemplate="<b>%{x|%b %Y}</b><br>Límite inferior: %{y:,.0f}<extra></extra>",
+        ))
     fig.add_trace(go.Scatter(
         x=pron_total["fecha"], y=pron_total["Cantidad_Pronosticada"],
         mode="lines+markers", name="Pronóstico",
         line=dict(color=ACENTO, width=2.5, dash="dash"),
         marker=dict(size=6, symbol="diamond", color=ACENTO),
-        fill="tozeroy", fillcolor="rgba(200,16,46,0.05)",
         hovertemplate="<b>%{x|%b %Y}</b><br>Pronóstico: %{y:,.0f}<extra></extra>",
     ))
     fig.add_vline(x=fecha_max_hist, line_dash="dot", line_color=GRIS_CLARO, opacity=0.7)
@@ -487,7 +536,7 @@ elif pagina == "📅 Próximo Mes":
         (hist_mensual["fecha"] == mes_anterior_ano) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
     ]
 
-    df_comp = df_mes[["Linea", "Cantidad_Pronosticada", "Modelo"]].merge(
+    df_comp = df_mes[["Linea", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior", "Modelo"]].merge(
         hist_mes_ant[["Linea", "Cantidad"]].rename(columns={"Cantidad": "Real_Año_Anterior"}),
         on="Linea", how="left",
     )
@@ -565,16 +614,24 @@ elif pagina == "📅 Próximo Mes":
         st.plotly_chart(fig_crec, use_container_width=True)
 
     st.subheader("Detalle por Línea")
+    cols_detalle = ["Linea", "Modelo", "Real_Año_Anterior", "Cantidad_Pronosticada",
+                    "Limite_Inferior", "Limite_Superior", "Crecimiento_%"]
+    nombres = {
+        "Real_Año_Anterior": f"Real {mes_anterior_ano.strftime('%b %Y')}",
+        "Cantidad_Pronosticada": f"Pronóstico {primer_mes_pron.strftime('%b %Y')}",
+        "Limite_Inferior": "Lím. Inferior",
+        "Limite_Superior": "Lím. Superior",
+        "Crecimiento_%": "Crecimiento %",
+    }
+    fmt_detalle = {
+        f"Real {mes_anterior_ano.strftime('%b %Y')}": "{:,.0f}",
+        f"Pronóstico {primer_mes_pron.strftime('%b %Y')}": "{:,.0f}",
+        "Lím. Inferior": "{:,.0f}",
+        "Lím. Superior": "{:,.0f}",
+        "Crecimiento %": "{:+.1f}%",
+    }
     st.dataframe(
-        df_comp[["Linea", "Modelo", "Real_Año_Anterior", "Cantidad_Pronosticada", "Crecimiento_%"]].rename(columns={
-            "Real_Año_Anterior": f"Real {mes_anterior_ano.strftime('%b %Y')}",
-            "Cantidad_Pronosticada": f"Pronóstico {primer_mes_pron.strftime('%b %Y')}",
-            "Crecimiento_%": "Crecimiento %",
-        }).style.format({
-            f"Real {mes_anterior_ano.strftime('%b %Y')}": "{:,.0f}",
-            f"Pronóstico {primer_mes_pron.strftime('%b %Y')}": "{:,.0f}",
-            "Crecimiento %": "{:+.1f}%",
-        }),
+        df_comp[cols_detalle].rename(columns=nombres).style.format(fmt_detalle),
         use_container_width=True, hide_index=True,
     )
 
