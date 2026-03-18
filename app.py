@@ -197,16 +197,6 @@ st.sidebar.caption(f"Datos históricos hasta: **{fecha_max_hist.strftime('%B %Y'
 st.sidebar.caption(f"Pronóstico desde: **{primer_mes_pron.strftime('%B %Y')}**")
 if LINEAS_ADVERTENCIA:
     st.sidebar.warning(f"Líneas excluidas: {', '.join(sorted(LINEAS_ADVERTENCIA))}")
-if "Ajuste_Venta_Perdida_Pct" in pron.columns:
-    pct_min_vp = pron["Ajuste_Venta_Perdida_Pct"].min()
-    pct_max_vp = pron["Ajuste_Venta_Perdida_Pct"].max()
-    st.sidebar.markdown("---")
-    st.sidebar.info(
-        f"📦 **Ajuste Venta Perdida**\n\n"
-        f"Rango aplicado: **{pct_min_vp:.1%} – {pct_max_vp:.1%}**\n\n"
-        f"↓ Meses de menor venta → {pct_min_vp:.1%}\n\n"
-        f"↑ Meses de mayor venta → {pct_max_vp:.1%}"
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
