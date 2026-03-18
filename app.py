@@ -563,27 +563,26 @@ elif pagina == "🏢 Visión Total":
         st.plotly_chart(fig_tree, use_container_width=True)
 
     st.subheader("Composición del Pronóstico por Línea")
-    comp_linea = pron_activo.pivot_table(
-        index="Linea", columns=pron_activo["fecha"].dt.strftime("%b %Y"),
-        values="Cantidad_Pronosticada", aggfunc="sum",
-    )
-    fechas_ord = sorted(pron_activo["fecha"].unique())
-    cols_ord = [f.strftime("%b %Y") for f in pd.to_datetime(fechas_ord)]
-    comp_linea = comp_linea[[c for c in cols_ord if c in comp_linea.columns]]
-    comp_linea["TOTAL"] = comp_linea.sum(axis=1)
-    # Orden fijo de líneas
     orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
-    comp_linea["_orden"] = comp_linea.index.map(lambda x: orden_idx.get(x, 999))
-    comp_linea = comp_linea.sort_values("_orden").drop(columns=["_orden"])
-    # Fila TOTAL
-    total_row = comp_linea.sum(numeric_only=True)
-    total_row.name = "TOTAL"
-    comp_linea = pd.concat([comp_linea, total_row.to_frame().T])
+    fechas_ord = sorted(pron_activo["fecha"].unique())
 
-    st.dataframe(
-        comp_linea.style.format("{:,.0f}"),
-        use_container_width=True,
-    )
+    for anio in sorted(set(pd.to_datetime(fechas_ord).year)):
+        fechas_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio]
+        pron_anio = pron_activo[pron_activo["fecha"].isin(fechas_anio)]
+        comp = pron_anio.pivot_table(
+            index="Linea", columns=pron_anio["fecha"].dt.strftime("%b %Y"),
+            values="Cantidad_Pronosticada", aggfunc="sum",
+        )
+        cols_anio = [f.strftime("%b %Y") for f in fechas_anio]
+        comp = comp[[c for c in cols_anio if c in comp.columns]]
+        comp["TOTAL"] = comp.sum(axis=1)
+        comp["_orden"] = comp.index.map(lambda x: orden_idx.get(x, 999))
+        comp = comp.sort_values("_orden").drop(columns=["_orden"])
+        total_row = comp.sum(numeric_only=True)
+        total_row.name = "TOTAL"
+        comp = pd.concat([comp, total_row.to_frame().T])
+        st.caption(f"**{anio}**")
+        st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
