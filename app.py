@@ -197,6 +197,16 @@ st.sidebar.caption(f"Datos históricos hasta: **{fecha_max_hist.strftime('%B %Y'
 st.sidebar.caption(f"Pronóstico desde: **{primer_mes_pron.strftime('%B %Y')}**")
 if LINEAS_ADVERTENCIA:
     st.sidebar.warning(f"Líneas excluidas: {', '.join(sorted(LINEAS_ADVERTENCIA))}")
+if "Ajuste_Venta_Perdida_Pct" in pron.columns:
+    pct_min_vp = pron["Ajuste_Venta_Perdida_Pct"].min()
+    pct_max_vp = pron["Ajuste_Venta_Perdida_Pct"].max()
+    st.sidebar.markdown("---")
+    st.sidebar.info(
+        f"📦 **Ajuste Venta Perdida**\n\n"
+        f"Rango aplicado: **{pct_min_vp:.1%} – {pct_max_vp:.1%}**\n\n"
+        f"↓ Meses de menor venta → {pct_min_vp:.1%}\n\n"
+        f"↑ Meses de mayor venta → {pct_max_vp:.1%}"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -320,6 +330,16 @@ if pagina == "📊 Resumen Ejecutivo":
         use_container_width=True, hide_index=True,
     )
 
+    if "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
+        pct_min_vp = pron_activo["Ajuste_Venta_Perdida_Pct"].min()
+        pct_max_vp = pron_activo["Ajuste_Venta_Perdida_Pct"].max()
+        mes_min_vp = pron_activo.loc[pron_activo["Ajuste_Venta_Perdida_Pct"].idxmin(), "fecha"].strftime("%b %Y")
+        mes_max_vp = pron_activo.loc[pron_activo["Ajuste_Venta_Perdida_Pct"].idxmax(), "fecha"].strftime("%b %Y")
+        st.info(
+            f"ℹ️ **Ajuste por Venta Perdida incluido:** las cantidades pronosticadas ya incorporan un factor de demanda "
+            f"no capturada que varía entre **{pct_min_vp:.1%}** ({mes_min_vp}) y **{pct_max_vp:.1%}** ({mes_max_vp}), "
+            f"interpolado linealmente según el volumen total mensual pronosticado."
+        )
     if LINEAS_ADVERTENCIA:
         st.markdown(f'<div class="warning-box">Las líneas <b>{", ".join(sorted(LINEAS_ADVERTENCIA))}</b> fueron excluidas del resumen por tener datos insuficientes o pronósticos con mayoría de ceros.</div>', unsafe_allow_html=True)
 
@@ -412,17 +432,24 @@ elif pagina == "📈 Pronóstico por Línea":
     col_tabla, col_comp = st.columns([3, 2])
     with col_tabla:
         st.subheader("Pronóstico Mensual")
-        tabla_pron = pron_linea[["fecha", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
+        cols_pron = ["fecha", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]
+        if "Ajuste_Venta_Perdida_Pct" in pron_linea.columns:
+            cols_pron.append("Ajuste_Venta_Perdida_Pct")
+        tabla_pron = pron_linea[cols_pron].copy()
         tabla_pron["Mes"] = tabla_pron["fecha"].dt.strftime("%B %Y")
-        cols_mostrar = ["Mes", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]
-        tabla_pron = tabla_pron.rename(columns={
+        rename_t = {
             "Cantidad_Pronosticada": "Pronóstico",
             "Limite_Inferior": "Lím. Inferior",
             "Limite_Superior": "Lím. Superior",
-        })
+        }
         fmt = {"Pronóstico": "{:,.0f}", "Lím. Inferior": "{:,.0f}", "Lím. Superior": "{:,.0f}"}
+        if "Ajuste_Venta_Perdida_Pct" in tabla_pron.columns:
+            rename_t["Ajuste_Venta_Perdida_Pct"] = "Ajuste VP"
+            fmt["Ajuste VP"] = "{:.2%}"
+        tabla_pron = tabla_pron.rename(columns=rename_t)
+        cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"] + (["Ajuste VP"] if "Ajuste VP" in tabla_pron.columns else [])
         st.dataframe(
-            tabla_pron[["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"]].style.format(fmt),
+            tabla_pron[cols_mostrar].style.format(fmt),
             use_container_width=True, hide_index=True,
         )
 
@@ -539,6 +566,37 @@ elif pagina == "🏢 Visión Total":
             texttemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percentRoot:.1%}",
         )
         st.plotly_chart(fig_tree, use_container_width=True)
+
+    if "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
+        st.markdown("---")
+        st.subheader("Ajuste por Venta Perdida — % aplicado por mes")
+        ajuste_mes = (
+            pron_activo.groupby("fecha")["Ajuste_Venta_Perdida_Pct"]
+            .first().reset_index()
+        )
+        ajuste_mes["Mes"] = ajuste_mes["fecha"].dt.strftime("%b %Y")
+        ajuste_mes["Ajuste %"] = (ajuste_mes["Ajuste_Venta_Perdida_Pct"] * 100).round(2)
+        fig_vp = px.bar(
+            ajuste_mes, x="Mes", y="Ajuste %",
+            text=ajuste_mes["Ajuste %"].apply(lambda x: f"{x:.2f}%"),
+            color="Ajuste %",
+            color_continuous_scale=ESCALA_BARRAS,
+        )
+        fig_vp.update_traces(textposition="outside")
+        fig_vp.update_layout(
+            height=300, showlegend=False, coloraxis_showscale=False,
+            xaxis_title="", yaxis_title="% Ajuste",
+            yaxis=dict(range=[0, ajuste_mes["Ajuste %"].max() * 1.3]),
+            margin=dict(l=40, r=20, t=20, b=60),
+            xaxis_tickangle=-45,
+            **PLOTLY_LAYOUT,
+        )
+        fig_vp.add_hline(
+            y=ajuste_mes["Ajuste %"].mean(), line_dash="dash", line_color=ACENTO,
+            annotation_text=f"Promedio: {ajuste_mes['Ajuste %'].mean():.2f}%",
+            annotation_position="top right",
+        )
+        st.plotly_chart(fig_vp, use_container_width=True)
 
     st.subheader("Composición del Pronóstico por Línea")
     comp_linea = pron_activo.pivot_table(
