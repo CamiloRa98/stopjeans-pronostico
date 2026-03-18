@@ -586,11 +586,11 @@ elif pagina == "🏢 Visión Total":
         fig_vp.update_layout(
             height=300, showlegend=False, coloraxis_showscale=False,
             xaxis_title="", yaxis_title="% Ajuste",
-            yaxis=dict(range=[0, ajuste_mes["Ajuste %"].max() * 1.3]),
             margin=dict(l=40, r=20, t=20, b=60),
             xaxis_tickangle=-45,
             **PLOTLY_LAYOUT,
         )
+        fig_vp.update_yaxes(range=[0, ajuste_mes["Ajuste %"].max() * 1.3])
         fig_vp.add_hline(
             y=ajuste_mes["Ajuste %"].mean(), line_dash="dash", line_color=ACENTO,
             annotation_text=f"Promedio: {ajuste_mes['Ajuste %'].mean():.2f}%",
