@@ -284,12 +284,20 @@ if pagina == "📊 Resumen Ejecutivo":
     df_detalle_mes = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Modelo", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
     df_detalle_mes["Linea"] = pd.Categorical(df_detalle_mes["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
     df_detalle_mes = df_detalle_mes.sort_values("Linea")
+    df_detalle_mes_disp = df_detalle_mes.rename(columns={
+        "Cantidad_Pronosticada": "Pronóstico",
+        "Limite_Inferior": "Lím. Inferior",
+        "Limite_Superior": "Lím. Superior",
+    })
+    total_det = pd.DataFrame([{
+        "Linea": "TOTAL", "Modelo": "",
+        "Pronóstico": df_detalle_mes_disp["Pronóstico"].sum(),
+        "Lím. Inferior": df_detalle_mes_disp["Lím. Inferior"].sum(),
+        "Lím. Superior": df_detalle_mes_disp["Lím. Superior"].sum(),
+    }])
+    df_detalle_mes_disp = pd.concat([df_detalle_mes_disp, total_det], ignore_index=True)
     st.dataframe(
-        df_detalle_mes.rename(columns={
-            "Cantidad_Pronosticada": "Pronóstico",
-            "Limite_Inferior": "Lím. Inferior",
-            "Limite_Superior": "Lím. Superior",
-        }).style.format({
+        df_detalle_mes_disp.style.format({
             "Pronóstico": "{:,.0f}",
             "Lím. Inferior": "{:,.0f}",
             "Lím. Superior": "{:,.0f}",
@@ -298,38 +306,34 @@ if pagina == "📊 Resumen Ejecutivo":
     )
 
     st.markdown("---")
-    st.subheader("Resumen Anual por Línea (12 meses)")
+    st.subheader("Resumen Anual por Línea")
     resumen = pron_activo.groupby("Linea").agg(
         Modelo=("Modelo", "first"),
         Total_12M=("Cantidad_Pronosticada", "sum"),
-        Promedio_Mes=("Cantidad_Pronosticada", "mean"),
-        Rango_Inferior=("Limite_Inferior", "sum"),
-        Rango_Superior=("Limite_Superior", "sum"),
     ).reset_index()
+    # Separar por año
+    fechas_2026 = pron_activo[pron_activo["fecha"].dt.year == 2026]
+    fechas_2027 = pron_activo[pron_activo["fecha"].dt.year == 2027]
+    res_2026 = fechas_2026.groupby("Linea")["Cantidad_Pronosticada"].sum().rename("Total_2026")
+    res_2027 = fechas_2027.groupby("Linea")["Cantidad_Pronosticada"].sum().rename("Total_2027")
+    resumen = resumen.merge(res_2026, on="Linea", how="left").merge(res_2027, on="Linea", how="left")
+    resumen["Total_2026"] = resumen["Total_2026"].fillna(0).astype(int)
+    resumen["Total_2027"] = resumen["Total_2027"].fillna(0).astype(int)
     resumen["Linea"] = pd.Categorical(resumen["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
     resumen = resumen.sort_values("Linea")
-    resumen["Promedio_Mes"] = resumen["Promedio_Mes"].round(0).astype(int)
+    total_res = pd.DataFrame([{
+        "Linea": "TOTAL", "Modelo": "",
+        "Total_2026": resumen["Total_2026"].sum(),
+        "Total_2027": resumen["Total_2027"].sum(),
+        "Total_12M": resumen["Total_12M"].sum(),
+    }])
+    resumen_disp = pd.concat([resumen[["Linea", "Modelo", "Total_2026", "Total_2027", "Total_12M"]], total_res], ignore_index=True)
     st.dataframe(
-        resumen.rename(columns={
-            "Rango_Inferior": "Total Lím. Inf.",
-            "Rango_Superior": "Total Lím. Sup.",
-        }).style.format({
-            "Total_12M": "{:,.0f}", "Promedio_Mes": "{:,.0f}",
-            "Total Lím. Inf.": "{:,.0f}", "Total Lím. Sup.": "{:,.0f}",
+        resumen_disp.rename(columns={"Total_2026": "Total 2026", "Total_2027": "Total 2027", "Total_12M": "Total 12M"}).style.format({
+            "Total 2026": "{:,.0f}", "Total 2027": "{:,.0f}", "Total 12M": "{:,.0f}",
         }),
         use_container_width=True, hide_index=True,
     )
-
-    if "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
-        pct_min_vp = pron_activo["Ajuste_Venta_Perdida_Pct"].min()
-        pct_max_vp = pron_activo["Ajuste_Venta_Perdida_Pct"].max()
-        mes_min_vp = pron_activo.loc[pron_activo["Ajuste_Venta_Perdida_Pct"].idxmin(), "fecha"].strftime("%b %Y")
-        mes_max_vp = pron_activo.loc[pron_activo["Ajuste_Venta_Perdida_Pct"].idxmax(), "fecha"].strftime("%b %Y")
-        st.info(
-            f"ℹ️ **Ajuste por Venta Perdida incluido:** las cantidades pronosticadas ya incorporan un factor de demanda "
-            f"no capturada que varía entre **{pct_min_vp:.1%}** ({mes_min_vp}) y **{pct_max_vp:.1%}** ({mes_max_vp}), "
-            f"interpolado linealmente según el volumen total mensual pronosticado."
-        )
     if LINEAS_ADVERTENCIA:
         st.markdown(f'<div class="warning-box">Las líneas <b>{", ".join(sorted(LINEAS_ADVERTENCIA))}</b> fueron excluidas del resumen por tener datos insuficientes o pronósticos con mayoría de ceros.</div>', unsafe_allow_html=True)
 
@@ -422,26 +426,27 @@ elif pagina == "📈 Pronóstico por Línea":
     col_tabla, col_comp = st.columns([3, 2])
     with col_tabla:
         st.subheader("Pronóstico Mensual")
-        cols_pron = ["fecha", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]
-        if "Ajuste_Venta_Perdida_Pct" in pron_linea.columns:
-            cols_pron.append("Ajuste_Venta_Perdida_Pct")
-        tabla_pron = pron_linea[cols_pron].copy()
+        tabla_pron = pron_linea[["fecha", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
         tabla_pron["Mes"] = tabla_pron["fecha"].dt.strftime("%B %Y")
-        rename_t = {
+        tabla_pron = tabla_pron.rename(columns={
             "Cantidad_Pronosticada": "Pronóstico",
             "Limite_Inferior": "Lím. Inferior",
             "Limite_Superior": "Lím. Superior",
-        }
+        })
         fmt = {"Pronóstico": "{:,.0f}", "Lím. Inferior": "{:,.0f}", "Lím. Superior": "{:,.0f}"}
-        if "Ajuste_Venta_Perdida_Pct" in tabla_pron.columns:
-            rename_t["Ajuste_Venta_Perdida_Pct"] = "Ajuste VP"
-            fmt["Ajuste VP"] = "{:.2%}"
-        tabla_pron = tabla_pron.rename(columns=rename_t)
-        cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"] + (["Ajuste VP"] if "Ajuste VP" in tabla_pron.columns else [])
-        st.dataframe(
-            tabla_pron[cols_mostrar].style.format(fmt),
-            use_container_width=True, hide_index=True,
-        )
+        cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"]
+
+        for anio in sorted(tabla_pron["fecha"].dt.year.unique()):
+            bloque = tabla_pron[tabla_pron["fecha"].dt.year == anio][cols_mostrar].copy()
+            subtotal = pd.DataFrame([{
+                "Mes": f"TOTAL {anio}",
+                "Pronóstico": bloque["Pronóstico"].sum(),
+                "Lím. Inferior": bloque["Lím. Inferior"].sum(),
+                "Lím. Superior": bloque["Lím. Superior"].sum(),
+            }])
+            bloque = pd.concat([bloque, subtotal], ignore_index=True)
+            st.caption(f"**{anio}**")
+            st.dataframe(bloque.style.format(fmt), use_container_width=True, hide_index=True)
 
     with col_comp:
         st.subheader("Comparativa Interanual")
@@ -557,37 +562,6 @@ elif pagina == "🏢 Visión Total":
         )
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    if "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
-        st.markdown("---")
-        st.subheader("Ajuste por Venta Perdida — % aplicado por mes")
-        ajuste_mes = (
-            pron_activo.groupby("fecha")["Ajuste_Venta_Perdida_Pct"]
-            .first().reset_index()
-        )
-        ajuste_mes["Mes"] = ajuste_mes["fecha"].dt.strftime("%b %Y")
-        ajuste_mes["Ajuste %"] = (ajuste_mes["Ajuste_Venta_Perdida_Pct"] * 100).round(2)
-        fig_vp = px.bar(
-            ajuste_mes, x="Mes", y="Ajuste %",
-            text=ajuste_mes["Ajuste %"].apply(lambda x: f"{x:.2f}%"),
-            color="Ajuste %",
-            color_continuous_scale=ESCALA_BARRAS,
-        )
-        fig_vp.update_traces(textposition="outside")
-        fig_vp.update_layout(
-            height=300, showlegend=False, coloraxis_showscale=False,
-            xaxis_title="", yaxis_title="% Ajuste",
-            margin=dict(l=40, r=20, t=20, b=60),
-            xaxis_tickangle=-45,
-            **PLOTLY_LAYOUT,
-        )
-        fig_vp.update_yaxes(range=[0, ajuste_mes["Ajuste %"].max() * 1.3])
-        fig_vp.add_hline(
-            y=ajuste_mes["Ajuste %"].mean(), line_dash="dash", line_color=ACENTO,
-            annotation_text=f"Promedio: {ajuste_mes['Ajuste %'].mean():.2f}%",
-            annotation_position="top right",
-        )
-        st.plotly_chart(fig_vp, use_container_width=True)
-
     st.subheader("Composición del Pronóstico por Línea")
     comp_linea = pron_activo.pivot_table(
         index="Linea", columns=pron_activo["fecha"].dt.strftime("%b %Y"),
@@ -601,6 +575,10 @@ elif pagina == "🏢 Visión Total":
     orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
     comp_linea["_orden"] = comp_linea.index.map(lambda x: orden_idx.get(x, 999))
     comp_linea = comp_linea.sort_values("_orden").drop(columns=["_orden"])
+    # Fila TOTAL
+    total_row = comp_linea.sum(numeric_only=True)
+    total_row.name = "TOTAL"
+    comp_linea = pd.concat([comp_linea, total_row.to_frame().T])
 
     st.dataframe(
         comp_linea.style.format("{:,.0f}"),
