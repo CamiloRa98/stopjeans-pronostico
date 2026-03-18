@@ -622,83 +622,113 @@ elif pagina == "🏢 Visión Total":
 # PÁGINA 4: MES EN CURSO
 # ═══════════════════════════════════════════════════════════════════════
 elif pagina == "📆 Mes en Curso":
-    # El mes en curso es el ÚLTIMO mes del histórico (incompleto)
     mes_curso = fecha_max_hist.replace(day=1)
     mes_curso_fin = mes_curso + pd.offsets.MonthEnd(0)
-
-    # Detectar el día de corte real: máximo día con datos en ese mes
-    hist_mes_raw = hist[
-        (hist["fecha"].dt.year == mes_curso.year)
-        & (hist["fecha"].dt.month == mes_curso.month)
-    ]
-    dia_corte = hist_mes_raw["fecha"].max().day if len(hist_mes_raw) > 0 else 1
     dias_mes = mes_curso_fin.day
+
+    # Cargar cierre_mes_curso.csv (generado por celda 35 del notebook)
+    CIERRE_CSV = BASE_DIR / "data" / "cierre_mes_curso.csv"
+    df_cierre_nb = None
+    dia_corte_default = 15
+    if CIERRE_CSV.exists():
+        df_cierre_nb = pd.read_csv(CIERRE_CSV)
+        if "Dias_Transcurridos" in df_cierre_nb.columns:
+            dia_corte_default = int(df_cierre_nb["Dias_Transcurridos"].iloc[0])
+
+    # Input: día de corte
+    dia_corte = st.number_input(
+        "Día de corte (día del mes hasta el que tienes datos):",
+        min_value=1, max_value=dias_mes, value=dia_corte_default, step=1,
+    )
     pct_mes = dia_corte / dias_mes
 
     st.markdown(f'<p class="main-header">Mes en Curso: {mes_curso.strftime("%B %Y")}</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="sub-header">Datos reales al día {dia_corte} de {dias_mes} ({pct_mes:.0%} del mes transcurrido)</p>', unsafe_allow_html=True)
 
-    # Ventas reales parciales del mes en curso por línea
+    # Ventas parciales del mes en curso y año anterior
     hist_mes_curso = hist_mensual[
-        (hist_mensual["fecha"] == mes_curso)
-        & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+        (hist_mensual["fecha"] == mes_curso) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
     ].copy()
-
-    # Mismo mes del año anterior (para comparar)
     mes_ant_ano = mes_curso - pd.DateOffset(years=1)
     hist_mes_ant = hist_mensual[
-        (hist_mensual["fecha"] == mes_ant_ano)
-        & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+        (hist_mensual["fecha"] == mes_ant_ano) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
     ].copy()
+    col_real_ant = f"Real_{mes_ant_ano.strftime('%b_%Y')}"
 
-    # Construir DataFrame con todas las líneas activas
+    # DataFrame base
     df_curso = pd.DataFrame({"Linea": LINEAS_ACTIVAS})
     df_curso = df_curso.merge(
         hist_mes_curso[["Linea", "Cantidad"]].rename(columns={"Cantidad": "Venta_Parcial"}),
         on="Linea", how="left",
     )
     df_curso = df_curso.merge(
-        hist_mes_ant[["Linea", "Cantidad"]].rename(columns={"Cantidad": f"Real_{mes_ant_ano.strftime('%b_%Y')}"}),
+        hist_mes_ant[["Linea", "Cantidad"]].rename(columns={"Cantidad": col_real_ant}),
         on="Linea", how="left",
     )
-    df_curso["Venta_Parcial"] = df_curso["Venta_Parcial"].fillna(0)
-    df_curso[f"Real_{mes_ant_ano.strftime('%b_%Y')}"] = df_curso[f"Real_{mes_ant_ano.strftime('%b_%Y')}"].fillna(0)
-    df_curso["Proyeccion_Cierre"] = (df_curso["Venta_Parcial"] / pct_mes).round(0) if pct_mes > 0 else df_curso["Venta_Parcial"]
-    col_real_ant = f"Real_{mes_ant_ano.strftime('%b_%Y')}"
+    df_curso["Venta_Parcial"] = df_curso["Venta_Parcial"].fillna(0).astype(int)
+    df_curso[col_real_ant] = df_curso[col_real_ant].fillna(0).astype(int)
+
+    # Proyección Cierre: regla de 3 según dia_corte del usuario
+    df_curso["Proyeccion_Cierre"] = (
+        (df_curso["Venta_Parcial"] / pct_mes).round(0).astype(int)
+        if pct_mes > 0 else df_curso["Venta_Parcial"]
+    )
+
+    # Pronóstico del Modelo y Cierre Estimado (desde cierre_mes_curso.csv)
+    tiene_modelo = df_cierre_nb is not None and "Pronostico_Modelo" in df_cierre_nb.columns
+    if tiene_modelo:
+        df_curso = df_curso.merge(
+            df_cierre_nb[["Linea", "Pronostico_Modelo"]].copy(),
+            on="Linea", how="left",
+        )
+        df_curso["Pronostico_Modelo"] = df_curso["Pronostico_Modelo"].fillna(0).astype(int)
+        df_curso["Cierre_Estimado"] = (
+            ((df_curso["Proyeccion_Cierre"] + df_curso["Pronostico_Modelo"]) / 2).round(0).astype(int)
+        )
+    else:
+        df_curso["Cierre_Estimado"] = df_curso["Proyeccion_Cierre"]
+
+    # Crecimiento vs año anterior (sobre Cierre Estimado)
     df_curso["Crecimiento_%"] = (
-        (df_curso["Proyeccion_Cierre"] - df_curso[col_real_ant])
+        (df_curso["Cierre_Estimado"] - df_curso[col_real_ant])
         / df_curso[col_real_ant].replace(0, 1) * 100
     ).round(1)
     df_curso["Linea"] = pd.Categorical(df_curso["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
     df_curso = df_curso.sort_values("Linea")
 
-    # Totales
-    total_parcial = df_curso["Venta_Parcial"].sum()
-    total_proyeccion = df_curso["Proyeccion_Cierre"].sum()
-    total_real_ant = df_curso[col_real_ant].sum()
-    crec_total = ((total_proyeccion - total_real_ant) / total_real_ant * 100) if total_real_ant > 0 else 0
+    # Totales para KPIs
+    total_parcial   = df_curso["Venta_Parcial"].sum()
+    total_proy      = df_curso["Proyeccion_Cierre"].sum()
+    total_modelo    = df_curso["Pronostico_Modelo"].sum() if tiene_modelo else 0
+    total_cierre    = df_curso["Cierre_Estimado"].sum()
+    total_real_ant  = df_curso[col_real_ant].sum()
+    crec_total      = ((total_cierre - total_real_ant) / total_real_ant * 100) if total_real_ant > 0 else 0
 
-    col1, col2, col3, col4 = st.columns(4)
+    # KPIs
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Venta Parcial", f"{total_parcial:,.0f} uds", f"Al día {dia_corte} de {dias_mes}")
     with col2:
-        st.metric("Proyección de Cierre", f"{total_proyeccion:,.0f} uds")
+        st.metric("Proyección de Cierre", f"{total_proy:,.0f} uds")
     with col3:
-        st.metric(f"Real {mes_ant_ano.strftime('%b %Y')}", f"{total_real_ant:,.0f} uds")
+        st.metric("Pronóstico del Modelo", f"{total_modelo:,.0f} uds" if tiene_modelo else "N/D")
     with col4:
-        st.metric("Crecimiento vs Año Anterior", f"{crec_total:+.1f}%")
+        st.metric("Cierre Estimado", f"{total_cierre:,.0f} uds")
+    with col5:
+        st.metric(f"Real {mes_ant_ano.strftime('%b %Y')}", f"{total_real_ant:,.0f} uds",
+                  f"{crec_total:+.1f}% vs año anterior")
 
     st.markdown("---")
 
     col_g1, col_g2 = st.columns([3, 2])
 
     with col_g1:
-        st.subheader("Venta Parcial vs Proyección de Cierre por Línea")
+        st.subheader("Comparativa por Línea")
         fig_curso = go.Figure()
         fig_curso.add_trace(go.Bar(
             y=df_curso["Linea"], x=df_curso["Venta_Parcial"],
             name=f"Venta al día {dia_corte}",
-            orientation="h", marker_color=GRIS_CLARO,
+            orientation="h", marker_color=GRIS_MUY_CLARO,
             text=df_curso["Venta_Parcial"].apply(lambda x: f"{x:,.0f}"),
             textposition="inside",
         ))
@@ -711,11 +741,19 @@ elif pagina == "📆 Mes en Curso":
         ))
         fig_curso.add_trace(go.Scatter(
             y=df_curso["Linea"], x=df_curso["Proyeccion_Cierre"],
-            name="Proyección de Cierre",
+            name="Proyección Cierre",
             mode="markers",
-            marker=dict(size=12, symbol="diamond", color=ACENTO, line=dict(width=1, color=BLANCO)),
-            hovertemplate="<b>%{y}</b><br>Proyección cierre: %{x:,.0f}<extra></extra>",
+            marker=dict(size=10, symbol="diamond", color=GRIS_OSCURO, line=dict(width=1, color=BLANCO)),
+            hovertemplate="<b>%{y}</b><br>Proyección: %{x:,.0f}<extra></extra>",
         ))
+        if tiene_modelo:
+            fig_curso.add_trace(go.Scatter(
+                y=df_curso["Linea"], x=df_curso["Cierre_Estimado"],
+                name="Cierre Estimado",
+                mode="markers",
+                marker=dict(size=13, symbol="star", color=ACENTO, line=dict(width=1, color=BLANCO)),
+                hovertemplate="<b>%{y}</b><br>Cierre estimado: %{x:,.0f}<extra></extra>",
+            ))
         fig_curso.update_layout(
             barmode="group", height=420,
             margin=dict(l=10, r=20, t=10, b=30),
@@ -727,8 +765,7 @@ elif pagina == "📆 Mes en Curso":
 
     with col_g2:
         st.subheader("Crecimiento vs Año Anterior")
-        df_crec_curso = df_curso[["Linea", "Crecimiento_%"]].copy()
-        df_crec_curso = df_crec_curso.sort_values("Crecimiento_%", ascending=True)
+        df_crec_curso = df_curso[["Linea", "Crecimiento_%"]].sort_values("Crecimiento_%", ascending=True)
         colores_crec = [POSITIVO if v > 0 else NEGATIVO for v in df_crec_curso["Crecimiento_%"]]
         fig_crec = go.Figure(go.Bar(
             y=df_crec_curso["Linea"], x=df_crec_curso["Crecimiento_%"],
@@ -737,32 +774,49 @@ elif pagina == "📆 Mes en Curso":
             textposition="outside",
         ))
         fig_crec.update_layout(
-            height=420, xaxis_title="% Crecimiento Proyectado",
+            height=420, xaxis_title="% Crecimiento",
             margin=dict(l=10, r=60, t=10, b=30),
             **PLOTLY_LAYOUT,
         )
         st.plotly_chart(fig_crec, use_container_width=True)
 
+    # Tabla detallada
     st.subheader("Detalle por Línea")
-    cols_curso = ["Linea", "Venta_Parcial", "Proyeccion_Cierre", col_real_ant, "Crecimiento_%"]
-    nombres_curso = {
-        "Venta_Parcial": f"Venta al día {dia_corte}",
+    cols_tabla = ["Linea", "Venta_Parcial", "Proyeccion_Cierre"]
+    nombres_tabla = {
+        "Venta_Parcial":    f"Venta al día {dia_corte}",
         "Proyeccion_Cierre": "Proyección Cierre",
-        col_real_ant: f"Real {mes_ant_ano.strftime('%b %Y')}",
-        "Crecimiento_%": "Crecimiento %",
+        col_real_ant:        f"Real {mes_ant_ano.strftime('%b %Y')}",
+        "Crecimiento_%":    "Crecimiento %",
     }
-    fmt_curso = {
+    fmt_tabla = {
         f"Venta al día {dia_corte}": "{:,.0f}",
-        "Proyección Cierre": "{:,.0f}",
+        "Proyección Cierre":         "{:,.0f}",
         f"Real {mes_ant_ano.strftime('%b %Y')}": "{:,.0f}",
-        "Crecimiento %": "{:+.1f}%",
+        "Crecimiento %":             "{:+.1f}%",
     }
+    if tiene_modelo:
+        cols_tabla += ["Pronostico_Modelo", "Cierre_Estimado"]
+        nombres_tabla["Pronostico_Modelo"] = "Pronóstico Modelo"
+        nombres_tabla["Cierre_Estimado"]   = "Cierre Estimado"
+        fmt_tabla["Pronóstico Modelo"]     = "{:,.0f}"
+        fmt_tabla["Cierre Estimado"]       = "{:,.0f}"
+    cols_tabla += [col_real_ant, "Crecimiento_%"]
+
     st.dataframe(
-        df_curso[cols_curso].rename(columns=nombres_curso).style.format(fmt_curso),
+        df_curso[cols_tabla].rename(columns=nombres_tabla).style.format(fmt_tabla),
         use_container_width=True, hide_index=True,
     )
 
-    st.markdown(f'<div class="warning-box">La <b>Proyección de Cierre</b> estima el total del mes extrapolando la venta parcial al ritmo actual ({dia_corte} de {dias_mes} días). Metodología: regla de tres proporcional, igual que la celda 35 del notebook.</div>', unsafe_allow_html=True)
+    nota_dia = f"día {dia_corte_default}" if df_cierre_nb is not None else f"día {dia_corte}"
+    st.markdown(
+        f'<div class="warning-box">'
+        f'<b>Proyección Cierre</b>: regla de 3 proporcional sobre la venta parcial al día {dia_corte}. '
+        f'<b>Pronóstico Modelo</b>: calculado por el modelo ML con datos al {nota_dia} (requiere re-ejecutar celda 35 del notebook para actualizar). '
+        f'<b>Cierre Estimado</b>: promedio de ambos métodos.'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ─── Footer ────────────────────────────────────────────────────────────
