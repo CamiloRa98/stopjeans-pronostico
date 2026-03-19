@@ -450,6 +450,7 @@ elif pagina == "📈 Pronóstico por Línea":
 
     with col_comp:
         st.subheader("Comparativa Interanual")
+        st.caption("")
         ultimo_ano_hist = hist_linea[hist_linea["fecha"] >= (fecha_max_hist - pd.DateOffset(months=11))]
         if len(ultimo_ano_hist) > 0:
             comp = pd.DataFrame({
