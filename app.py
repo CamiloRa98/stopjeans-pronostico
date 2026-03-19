@@ -126,6 +126,10 @@ pron_total = pron_activo.groupby("fecha").agg(
 fecha_max_hist = hist["fecha"].max()
 primer_mes_pron = pron_activo["fecha"].min()
 
+# ─── Cierre mes en curso (global para todas las páginas) ───────────────
+CIERRE_CSV = BASE_DIR / "data" / "cierre_mes_curso.csv"
+df_cierre_nb = pd.read_csv(CIERRE_CSV) if CIERRE_CSV.exists() else None
+
 # ─── Estilos CSS — Paleta STOP JEANS ──────────────────────────────────
 st.markdown(f"""
 <style>
@@ -564,7 +568,33 @@ elif pagina == "🏢 Visión Total":
         st.plotly_chart(fig_tree, use_container_width=True)
 
     st.subheader("Composición del Pronóstico por Línea")
+    st.caption("Real (meses cerrados) · Proyección (mes en curso) · Pronóstico (meses futuros)")
     orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
+
+    # ── Construir tabla combinada: Real + Proyección mes curso + Pronóstico ──
+    anio_pron = primer_mes_pron.year  # año de inicio del pronóstico (2026)
+
+    # Meses reales del año del pronóstico (ya cerrados: Jan, Feb)
+    hist_anio = hist_mensual[
+        (hist_mensual["fecha"].dt.year == anio_pron) &
+        (hist_mensual["fecha"] < primer_mes_pron) &
+        (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+    ]
+    cols_real = {}
+    for f in sorted(hist_anio["fecha"].unique()):
+        lbl = pd.Timestamp(f).strftime("%b %Y") + " ✓"
+        cols_real[lbl] = hist_mensual[
+            (hist_mensual["fecha"] == f) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+        ].set_index("Linea")["Cantidad"]
+
+    # Mes en curso (proyección del cierre)
+    mes_curso_dt = fecha_max_hist.replace(day=1)
+    cols_curso = {}
+    if df_cierre_nb is not None and "Proyeccion_Cierre" in df_cierre_nb.columns:
+        lbl_curso = mes_curso_dt.strftime("%b %Y") + " ~"
+        cols_curso[lbl_curso] = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"]
+
+    # Pronóstico (meses futuros) separado por año
     fechas_ord = sorted(pron_activo["fecha"].unique())
 
     for anio in sorted(set(pd.to_datetime(fechas_ord).year)):
@@ -574,16 +604,75 @@ elif pagina == "🏢 Visión Total":
             index="Linea", columns=pron_anio["fecha"].dt.strftime("%b %Y"),
             values="Cantidad_Pronosticada", aggfunc="sum",
         )
-        cols_anio = [f.strftime("%b %Y") for f in fechas_anio]
-        comp = comp[[c for c in cols_anio if c in comp.columns]]
+        cols_anio_ord = [f.strftime("%b %Y") for f in fechas_anio]
+        comp = comp[[c for c in cols_anio_ord if c in comp.columns]]
+
+        # Agregar columnas reales y proyección solo al primer año
+        if anio == anio_pron:
+            for lbl, serie in {**cols_real, **cols_curso}.items():
+                comp.insert(0, lbl, serie.reindex(comp.index).fillna(0).astype(int))
+
         comp["TOTAL"] = comp.sum(axis=1)
         comp["_orden"] = comp.index.map(lambda x: orden_idx.get(x, 999))
         comp = comp.sort_values("_orden").drop(columns=["_orden"])
         total_row = comp.sum(numeric_only=True)
         total_row.name = "TOTAL"
         comp = pd.concat([comp, total_row.to_frame().T])
-        st.caption(f"**{anio}**")
+        st.caption(f"**{anio}** — ✓ Real  · ~ Proyección cierre  · resto Pronóstico modelo")
         st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True)
+
+    # ── Tabla de crecimiento vs 2025 ──────────────────────────────────────
+    st.markdown("---")
+    st.subheader(f"Crecimiento vs {anio_pron - 1}")
+
+    # Construir tabla de valores 2025 (mismo periodo)
+    todos_meses_2026 = sorted(set(
+        list(pd.to_datetime(list(cols_real.keys()) + list(cols_curso.keys()))
+             if cols_real or cols_curso else []) +
+        [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
+    ))
+    crec_data = {}
+    for f_2026 in todos_meses_2026:
+        f_2025 = f_2026 - pd.DateOffset(years=1)
+        lbl = f_2026.strftime("%b %Y")
+        # Valor 2026
+        if f_2026 < primer_mes_pron:
+            val_2026 = hist_mensual[
+                (hist_mensual["fecha"] == f_2026) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+            ].groupby("Linea")["Cantidad"].sum()
+        elif f_2026 == mes_curso_dt and cols_curso:
+            val_2026 = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"].reindex(LINEAS_ACTIVAS).fillna(0)
+        else:
+            val_2026 = pron_activo[pron_activo["fecha"] == f_2026].set_index("Linea")["Cantidad_Pronosticada"].reindex(LINEAS_ACTIVAS).fillna(0)
+        # Valor 2025
+        val_2025 = hist_mensual[
+            (hist_mensual["fecha"] == f_2025) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+        ].groupby("Linea")["Cantidad"].sum().reindex(LINEAS_ACTIVAS).fillna(0)
+
+        crec = ((val_2026 - val_2025) / val_2025.replace(0, 1) * 100).round(1)
+        crec_data[lbl] = crec
+
+    if crec_data:
+        df_crec = pd.DataFrame(crec_data)
+        df_crec["_orden"] = df_crec.index.map(lambda x: orden_idx.get(x, 999))
+        df_crec = df_crec.sort_values("_orden").drop(columns=["_orden"])
+        total_crec = pd.Series({
+            col: ((df_crec[col].mean()) if df_crec[col].notna().any() else 0)
+            for col in df_crec.columns
+        }, name="PROMEDIO")
+        df_crec = pd.concat([df_crec, total_crec.to_frame().T])
+
+        def color_crec(val):
+            try:
+                v = float(val)
+                return "color: #2E7D32" if v > 0 else "color: #C8102E"
+            except:
+                return ""
+
+        st.dataframe(
+            df_crec.style.format("{:+.1f}%").applymap(color_crec),
+            use_container_width=True,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -594,14 +683,10 @@ elif pagina == "📆 Mes en Curso":
     mes_curso_fin = mes_curso + pd.offsets.MonthEnd(0)
     dias_mes = mes_curso_fin.day
 
-    # Cargar cierre_mes_curso.csv (generado por celda 35 del notebook)
-    CIERRE_CSV = BASE_DIR / "data" / "cierre_mes_curso.csv"
-    df_cierre_nb = None
+    # df_cierre_nb ya cargado globalmente
     dia_corte_default = 15
-    if CIERRE_CSV.exists():
-        df_cierre_nb = pd.read_csv(CIERRE_CSV)
-        if "Dias_Transcurridos" in df_cierre_nb.columns:
-            dia_corte_default = int(df_cierre_nb["Dias_Transcurridos"].iloc[0])
+    if df_cierre_nb is not None and "Dias_Transcurridos" in df_cierre_nb.columns:
+        dia_corte_default = int(df_cierre_nb["Dias_Transcurridos"].iloc[0])
 
     # Input: día de corte
     dia_corte = st.number_input(
