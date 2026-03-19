@@ -574,21 +574,21 @@ elif pagina == "🏢 Visión Total":
     # ── Construir tabla combinada: Real + Proyección mes curso + Pronóstico ──
     anio_pron = primer_mes_pron.year  # año de inicio del pronóstico (2026)
 
-    # Meses reales del año del pronóstico (ya cerrados: Jan, Feb)
-    hist_anio = hist_mensual[
+    # Meses reales: solo meses completamente cerrados (antes del mes en curso)
+    mes_curso_dt = fecha_max_hist.replace(day=1)
+    meses_cerrados = hist_mensual[
         (hist_mensual["fecha"].dt.year == anio_pron) &
-        (hist_mensual["fecha"] < primer_mes_pron) &
+        (hist_mensual["fecha"] < mes_curso_dt) &
         (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
-    ]
+    ]["fecha"].unique()
     cols_real = {}
-    for f in sorted(hist_anio["fecha"].unique()):
+    for f in sorted(meses_cerrados):
         lbl = pd.Timestamp(f).strftime("%b %Y") + " ✓"
         cols_real[lbl] = hist_mensual[
             (hist_mensual["fecha"] == f) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
         ].set_index("Linea")["Cantidad"]
 
-    # Mes en curso (proyección del cierre)
-    mes_curso_dt = fecha_max_hist.replace(day=1)
+    # Mes en curso: solo proyección (sin parcial)
     cols_curso = {}
     if df_cierre_nb is not None and "Proyeccion_Cierre" in df_cierre_nb.columns:
         lbl_curso = mes_curso_dt.strftime("%b %Y") + " ~"
@@ -607,10 +607,17 @@ elif pagina == "🏢 Visión Total":
         cols_anio_ord = [f.strftime("%b %Y") for f in fechas_anio]
         comp = comp[[c for c in cols_anio_ord if c in comp.columns]]
 
-        # Agregar columnas reales y proyección solo al primer año
+        # Agregar columnas reales y proyección al primer año en orden cronológico
         if anio == anio_pron:
             for lbl, serie in {**cols_real, **cols_curso}.items():
-                comp.insert(0, lbl, serie.reindex(comp.index).fillna(0).astype(int))
+                comp[lbl] = serie.reindex(comp.index).fillna(0).astype(int)
+            # Reordenar: reales (Jan, Feb...) + proyección (Mar~) + pronósticos (Apr...)
+            cols_ordenadas = (
+                [c for c in comp.columns if "✓" in c] +
+                [c for c in comp.columns if "~" in c] +
+                [c for c in comp.columns if "✓" not in c and "~" not in c]
+            )
+            comp = comp[cols_ordenadas]
 
         comp["TOTAL"] = comp.sum(axis=1)
         comp["_orden"] = comp.index.map(lambda x: orden_idx.get(x, 999))
