@@ -633,11 +633,10 @@ elif pagina == "🏢 Visión Total":
     st.subheader(f"Crecimiento vs {anio_pron - 1}")
 
     # Construir tabla de valores 2025 (mismo periodo)
-    todos_meses_2026 = sorted(set(
-        list(pd.to_datetime(list(cols_real.keys()) + list(cols_curso.keys()))
-             if cols_real or cols_curso else []) +
-        [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
-    ))
+    fechas_real = [pd.Timestamp(f) for f in sorted(meses_cerrados)]
+    fechas_curso = [mes_curso_dt] if cols_curso else []
+    fechas_pron_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
+    todos_meses_2026 = sorted(set(fechas_real + fechas_curso + fechas_pron_anio))
     crec_data = {}
     for f_2026 in todos_meses_2026:
         f_2025 = f_2026 - pd.DateOffset(years=1)
