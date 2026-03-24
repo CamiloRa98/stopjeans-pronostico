@@ -59,24 +59,43 @@ st.set_page_config(
 
 # ─── Rutas de archivos (relativas al repo) ─────────────────────────────
 BASE_DIR = Path(__file__).parent
-HISTORICO_CSV = BASE_DIR / "data" / "Ventas_linea.csv"
-PRONOSTICO_CSV = BASE_DIR / "data" / "pronostico_ventas_por_linea.csv"
+
+ARCHIVOS_MARCA = {
+    "STOP JEANS": {
+        "historico":  BASE_DIR / "data" / "Ventas_linea_stopjeans.csv",
+        "pronostico": BASE_DIR / "data" / "pronostico_ventas_stop_jeans.csv",
+        "cierre":     BASE_DIR / "data" / "cierre_mes_curso_stop_jeans.csv",
+    },
+    "YOYO JEANS": {
+        "historico":  BASE_DIR / "data" / "Ventas_linea_yoyojeans.csv",
+        "pronostico": BASE_DIR / "data" / "pronostico_ventas_yoyo_jeans.csv",
+        "cierre":     BASE_DIR / "data" / "cierre_mes_curso_yoyo_jeans.csv",
+    },
+}
+
+
+# ─── Selector de marca (sidebar anticipado) ────────────────────────────
+marca_sel = st.sidebar.selectbox(
+    "Marca",
+    list(ARCHIVOS_MARCA.keys()),
+    index=0,
+)
+RUTAS = ARCHIVOS_MARCA[marca_sel]
 
 
 # ─── Carga de datos (cacheada) ─────────────────────────────────────────
 @st.cache_data
-def cargar_historico():
-    df = pd.read_csv(HISTORICO_CSV, sep=";")
+def cargar_historico(path):
+    df = pd.read_csv(path, sep=";")
     df["fecha"] = pd.to_datetime(df["fecha"], format="%d/%m/%Y")
     return df
 
 
 @st.cache_data
-def cargar_pronostico():
-    df = pd.read_csv(PRONOSTICO_CSV)
+def cargar_pronostico(path):
+    df = pd.read_csv(path)
     df["fecha"] = pd.to_datetime(df["fecha"])
     df["Cantidad_Pronosticada"] = df["Cantidad_Pronosticada"].clip(lower=0)
-    # Intervalos de confianza (compatibilidad si el CSV aún no los tiene)
     if "Limite_Inferior" not in df.columns:
         df["Limite_Inferior"] = df["Cantidad_Pronosticada"]
     if "Limite_Superior" not in df.columns:
@@ -86,8 +105,8 @@ def cargar_pronostico():
     return df
 
 
-hist = cargar_historico()
-pron = cargar_pronostico()
+hist = cargar_historico(str(RUTAS["historico"]))
+pron = cargar_pronostico(str(RUTAS["pronostico"]))
 
 # ─── Líneas problemáticas ──────────────────────────────────────────────
 LINEAS_ADVERTENCIA = set()
@@ -127,7 +146,7 @@ fecha_max_hist = hist["fecha"].max()
 primer_mes_pron = pron_activo["fecha"].min()
 
 # ─── Cierre mes en curso (global para todas las páginas) ───────────────
-CIERRE_CSV = BASE_DIR / "data" / "cierre_mes_curso.csv"
+CIERRE_CSV = RUTAS["cierre"]
 df_cierre_nb = pd.read_csv(CIERRE_CSV) if CIERRE_CSV.exists() else None
 
 # ─── Estilos CSS — Paleta STOP JEANS ──────────────────────────────────
@@ -189,7 +208,7 @@ PLOTLY_LAYOUT = dict(
 
 # ─── Sidebar: Navegación ───────────────────────────────────────────────
 st.sidebar.markdown(f'<div class="logo-container">{LOGO_SVG}</div>', unsafe_allow_html=True)
-st.sidebar.markdown(f'<p style="text-align:center; color:{GRIS_MEDIO}; font-size:0.85rem; margin-top:-0.5rem;">Pronóstico de Ventas</p>', unsafe_allow_html=True)
+st.sidebar.markdown(f'<p style="text-align:center; color:{GRIS_MEDIO}; font-size:0.85rem; margin-top:-0.5rem;">{marca_sel} — Pronóstico de Ventas</p>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 pagina = st.sidebar.radio(
     "Navegación",
