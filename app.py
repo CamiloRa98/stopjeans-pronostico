@@ -105,6 +105,10 @@ def cargar_pronostico(path):
     return df
 
 
+if not RUTAS["pronostico"].exists() or not RUTAS["historico"].exists():
+    st.warning(f"Los datos de **{marca_sel}** aún no están disponibles. Ejecuta el notebook con `MARCA_ACTIVA = '{marca_sel}'` y sube los CSV al repositorio.")
+    st.stop()
+
 hist = cargar_historico(str(RUTAS["historico"]))
 pron = cargar_pronostico(str(RUTAS["pronostico"]))
 
