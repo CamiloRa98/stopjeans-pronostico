@@ -292,6 +292,10 @@ if marca_sel == "STOP JEANS":
     st.sidebar.caption("(Abril = 0%)")
 if LINEAS_ADVERTENCIA:
     st.sidebar.warning(f"Líneas excluidas: {', '.join(sorted(LINEAS_ADVERTENCIA))}")
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Actualizar datos"):
+    st.cache_data.clear()
+    st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════
