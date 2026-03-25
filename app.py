@@ -666,30 +666,6 @@ elif pagina == "🏢 Visión Total":
         )
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    if marca_sel == "STOP JEANS" and "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
-        st.markdown("---")
-        st.subheader("Ajuste por Venta Perdida por Mes")
-        vp_mensual = pron_activo.groupby("fecha")["Ajuste_Venta_Perdida_Pct"].mean().reset_index()
-        vp_mensual["Ajuste_Venta_Perdida_Pct"] = (vp_mensual["Ajuste_Venta_Perdida_Pct"] * 100).round(2)
-        vp_mensual["Mes"] = vp_mensual["fecha"].dt.strftime("%b %Y")
-        fig_vp = px.bar(
-            vp_mensual, x="Mes", y="Ajuste_Venta_Perdida_Pct",
-            text="Ajuste_Venta_Perdida_Pct",
-            color_discrete_sequence=[ACENTO],
-        )
-        fig_vp.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-        avg_vp = vp_mensual["Ajuste_Venta_Perdida_Pct"].mean()
-        fig_vp.add_hline(y=avg_vp, line_dash="dash", line_color=GRIS_CLARO,
-                         annotation_text=f"Promedio: {avg_vp:.1f}%", annotation_position="top right")
-        fig_vp.update_layout(
-            height=320, showlegend=False,
-            xaxis_title="", yaxis_title="% Ajuste VP",
-            margin=dict(l=50, r=20, t=10, b=60),
-            xaxis_tickangle=-45,
-            **PLOTLY_LAYOUT,
-        )
-        st.plotly_chart(fig_vp, use_container_width=True)
-
     st.subheader("Composición del Pronóstico por Línea")
     st.caption("Real (meses cerrados) · Proyección (mes en curso) · Pronóstico (meses futuros)")
     orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
