@@ -115,14 +115,14 @@ else:  # STOP JEANS
 
 
 # ─── Carga de datos (cacheada) ─────────────────────────────────────────
-@st.cache_data
+@st.cache_data(ttl=60)
 def cargar_historico(path):
     df = pd.read_csv(path, sep=";")
     df["fecha"] = pd.to_datetime(df["fecha"], format="%d/%m/%Y")
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=60)
 def cargar_pronostico(path):
     df = pd.read_csv(path)
     df["fecha"] = pd.to_datetime(df["fecha"])
