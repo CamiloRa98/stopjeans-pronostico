@@ -234,10 +234,16 @@ st.markdown(f"""
         color: white;
     }}
     [data-testid="stSidebar"] .stAlert,
-    [data-testid="stSidebar"] .stAlert * {{
+    [data-testid="stSidebar"] .stAlert *,
+    [data-testid="stSidebar"] [data-testid="stNotification"],
+    [data-testid="stSidebar"] [data-testid="stNotification"] *,
+    [data-testid="stSidebar"] [role="alert"],
+    [data-testid="stSidebar"] [role="alert"] * {{
+        background: none !important;
         background-color: transparent !important;
         color: white !important;
         border: none !important;
+        box-shadow: none !important;
     }}
     [data-testid="stMetric"] {{
         background-color: {BLANCO};
