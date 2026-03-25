@@ -80,7 +80,7 @@ RUTAS = ARCHIVOS_MARCA[marca_sel]
 # ─── Paleta de colores dinámica por marca ──────────────────────────────
 if marca_sel == "YOYO JEANS":
     NEGRO          = "#1A001A"    # near-black violeta
-    SIDEBAR_BG     = "#4A0045"    # violeta oscuro medio (sidebar)
+    SIDEBAR_BG     = "#6A0062"    # violeta medio (sidebar)
     GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
     GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
     GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
@@ -97,7 +97,7 @@ if marca_sel == "YOYO JEANS":
     FILL_INTERVALO = "rgba(194,0,110,0.12)"
 else:  # STOP JEANS
     NEGRO          = "#1A0000"    # near-black rojo
-    SIDEBAR_BG     = "#4A0000"    # rojo oscuro medio (sidebar)
+    SIDEBAR_BG     = "#6A0000"    # rojo medio (sidebar)
     GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
     GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
     GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
@@ -216,11 +216,14 @@ st.markdown(f"""
     }}
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] small,
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] .stMarkdown,
     [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] *,
     [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
-        color: rgba(255,255,255,0.85) !important;
+        color: rgba(255,255,255,0.92) !important;
     }}
     [data-testid="stSidebar"] hr {{
         border-color: rgba(255,255,255,0.15);
