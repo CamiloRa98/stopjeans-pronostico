@@ -8,28 +8,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 
-# ─── Paleta de colores STOP JEANS ──────────────────────────────────────
-# Basada en la identidad visual de la marca: negro, blanco, grises
-NEGRO = "#000000"
-GRIS_OSCURO = "#1A1A1A"
-GRIS_MEDIO = "#4A4A4A"
-GRIS_CLARO = "#8C8C8C"
-GRIS_MUY_CLARO = "#E8E8E8"
+# ─── Paleta de colores: definida dinámicamente tras selección de marca ──
+# (ver bloque debajo de marca_sel)
 BLANCO = "#FFFFFF"
-ACENTO = "#C8102E"        # Rojo acento (para pronósticos/alertas)
-ACENTO_SUAVE = "#D4564E"  # Rojo suave
-POSITIVO = "#2E7D32"      # Verde crecimiento
-NEGATIVO = "#C8102E"      # Rojo decrecimiento
-
-# Escala para gráficos de barras y heatmaps
-ESCALA_MARCA = [GRIS_MUY_CLARO, GRIS_CLARO, GRIS_MEDIO, GRIS_OSCURO, NEGRO]
-ESCALA_BARRAS = [GRIS_CLARO, NEGRO]
-
-# Paleta discreta para líneas de producto
-PALETA_LINEAS = [
-    "#000000", "#333333", "#555555", "#777777", "#999999",
-    "#BBBBBB", "#C8102E", "#8B0000", "#2F2F2F", "#6B6B6B",
-]
+POSITIVO = "#2E7D32"   # Verde crecimiento (igual para ambas marcas)
 
 # ─── Logo SVG inline — STOP JEANS ────────────────────────────────────
 LOGO_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 127 20" height="28" width="180">
@@ -94,6 +76,42 @@ marca_sel = st.sidebar.selectbox(
     index=0,
 )
 RUTAS = ARCHIVOS_MARCA[marca_sel]
+
+# ─── Paleta de colores dinámica por marca ──────────────────────────────
+if marca_sel == "YOYO JEANS":
+    NEGRO          = "#1A001A"    # near-black violeta
+    GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
+    GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
+    GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
+    GRIS_MUY_CLARO = "#FCE4F0"    # rosa muy claro (fondos suaves)
+    ACENTO         = "#C2006E"    # fucsia YOYO
+    ACENTO_SUAVE   = "#E91E8C"    # magenta
+    NEGATIVO       = "#C2006E"
+    ESCALA_MARCA   = ["#FCE4F0", "#F472B6", "#E91E8C", "#880050", "#1A001A"]
+    ESCALA_BARRAS  = ["#FCE4F0", "#1A001A"]
+    PALETA_LINEAS  = [
+        "#1A001A", "#3D003A", "#880050", "#C2006E", "#E91E8C",
+        "#F472B6", "#FF80BC", "#FFD6EC", "#4A004A", "#6B0050",
+    ]
+    FILL_INTERVALO = "rgba(194,0,110,0.12)"
+    SIDEBAR_BG     = "#FFF0F8"
+else:  # STOP JEANS
+    NEGRO          = "#1A0000"    # near-black rojo
+    GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
+    GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
+    GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
+    GRIS_MUY_CLARO = "#FFE4E4"    # rosa muy claro (fondos suaves)
+    ACENTO         = "#C8102E"    # rojo STOP
+    ACENTO_SUAVE   = "#EF5350"    # rojo suave
+    NEGATIVO       = "#C8102E"
+    ESCALA_MARCA   = ["#FFE4E4", "#EF5350", "#D32F2F", "#B30000", "#1A0000"]
+    ESCALA_BARRAS  = ["#FFE4E4", "#1A0000"]
+    PALETA_LINEAS  = [
+        "#1A0000", "#3D0000", "#6B0000", "#B30000", "#C8102E",
+        "#D32F2F", "#EF5350", "#FF8A80", "#8B0000", "#555555",
+    ]
+    FILL_INTERVALO = "rgba(200,16,46,0.12)"
+    SIDEBAR_BG     = "#FFF5F5"
 
 
 # ─── Carga de datos (cacheada) ─────────────────────────────────────────
@@ -193,7 +211,7 @@ st.markdown(f"""
         padding: 1rem 0 0.5rem 0;
     }}
     [data-testid="stSidebar"] {{
-        background-color: {BLANCO};
+        background-color: {SIDEBAR_BG};
         border-right: 2px solid {NEGRO};
     }}
     [data-testid="stMetric"] {{
@@ -442,7 +460,7 @@ elif pagina == "📈 Pronóstico por Línea":
             x=pron_linea["fecha"], y=pron_linea["Limite_Inferior"],
             mode="lines", name="Intervalo 80%",
             line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(200,16,46,0.12)",
+            fill="tonexty", fillcolor=FILL_INTERVALO,
             hovertemplate="<b>%{x|%b %Y}</b><br>Límite inferior: %{y:,.0f}<extra></extra>",
         ))
     fig.add_trace(go.Scatter(
@@ -537,7 +555,7 @@ elif pagina == "🏢 Visión Total":
         fig.add_trace(go.Scatter(
             x=pron_total["fecha"], y=pron_total["Limite_Inferior"],
             mode="lines", name="Intervalo 80%", line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(200,16,46,0.12)",
+            fill="tonexty", fillcolor=FILL_INTERVALO,
             hovertemplate="<b>%{x|%b %Y}</b><br>Límite inferior: %{y:,.0f}<extra></extra>",
         ))
     fig.add_trace(go.Scatter(
@@ -594,7 +612,7 @@ elif pagina == "🏢 Visión Total":
         fig_tree = px.treemap(
             df_tree, path=["Linea"], values="Cantidad_Pronosticada",
             color="Cantidad_Pronosticada",
-            color_continuous_scale=[GRIS_MUY_CLARO, GRIS_MEDIO, NEGRO],
+            color_continuous_scale=ESCALA_MARCA,
         )
         fig_tree.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10),
                                coloraxis_showscale=False, paper_bgcolor=BLANCO)
@@ -705,7 +723,7 @@ elif pagina == "🏢 Visión Total":
                 def color_crec(val):
                     try:
                         v = float(val)
-                        return "color: #2E7D32" if v > 0 else "color: #C8102E"
+                        return f"color: {POSITIVO}" if v > 0 else f"color: {NEGATIVO}"
                     except:
                         return ""
 
