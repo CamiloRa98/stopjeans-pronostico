@@ -531,7 +531,7 @@ elif pagina == "📈 Pronóstico por Línea":
         fmt = {"Pronóstico": "{:,.0f}", "Lím. Inferior": "{:,.0f}", "Lím. Superior": "{:,.0f}"}
         cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"]
         if marca_sel == "STOP JEANS" and "Ajuste_Venta_Perdida_Pct" in pron_linea.columns:
-            tabla_pron["Ajuste VP"] = pron_linea["Ajuste_Venta_Perdida_Pct"].values
+            tabla_pron["Ajuste VP"] = (pron_linea["Ajuste_Venta_Perdida_Pct"].values * 100).round(1)
             fmt["Ajuste VP"] = "{:.1f}%"
             cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior", "Ajuste VP"]
 
@@ -666,6 +666,7 @@ elif pagina == "🏢 Visión Total":
         st.markdown("---")
         st.subheader("Ajuste por Venta Perdida por Mes")
         vp_mensual = pron_activo.groupby("fecha")["Ajuste_Venta_Perdida_Pct"].mean().reset_index()
+        vp_mensual["Ajuste_Venta_Perdida_Pct"] = (vp_mensual["Ajuste_Venta_Perdida_Pct"] * 100).round(2)
         vp_mensual["Mes"] = vp_mensual["fecha"].dt.strftime("%b %Y")
         fig_vp = px.bar(
             vp_mensual, x="Mes", y="Ajuste_Venta_Perdida_Pct",
