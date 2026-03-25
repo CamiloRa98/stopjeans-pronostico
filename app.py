@@ -343,7 +343,7 @@ if pagina == "📊 Resumen Ejecutivo":
             "Lím. Inferior": "{:,.0f}",
             "Lím. Superior": "{:,.0f}",
         }),
-        use_container_width=True, hide_index=True,
+        use_container_width=True, hide_index=True, height=494,
     )
 
     st.markdown("---")
