@@ -286,10 +286,6 @@ pagina = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Datos históricos hasta: **{fecha_max_hist.strftime('%B %Y')}**")
 st.sidebar.caption(f"Pronóstico desde: **{primer_mes_pron.strftime('%B %Y')}**")
-if marca_sel == "STOP JEANS":
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Ajuste Venta Perdida: **4%–6%** aplicado")
-    st.sidebar.caption("(Abril = 0%)")
 if LINEAS_ADVERTENCIA:
     st.sidebar.warning(f"Líneas excluidas: {', '.join(sorted(LINEAS_ADVERTENCIA))}")
 st.sidebar.markdown("---")
