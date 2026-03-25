@@ -80,6 +80,7 @@ RUTAS = ARCHIVOS_MARCA[marca_sel]
 # ─── Paleta de colores dinámica por marca ──────────────────────────────
 if marca_sel == "YOYO JEANS":
     NEGRO          = "#1A001A"    # near-black violeta
+    SIDEBAR_BG     = "#4A0045"    # violeta oscuro medio (sidebar)
     GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
     GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
     GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
@@ -94,9 +95,9 @@ if marca_sel == "YOYO JEANS":
         "#F472B6", "#FF80BC", "#FFD6EC", "#4A004A", "#6B0050",
     ]
     FILL_INTERVALO = "rgba(194,0,110,0.12)"
-    SIDEBAR_BG     = "#FFF0F8"
 else:  # STOP JEANS
     NEGRO          = "#1A0000"    # near-black rojo
+    SIDEBAR_BG     = "#4A0000"    # rojo oscuro medio (sidebar)
     GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
     GRIS_MEDIO     = "#4A4A4A"    # neutro (texto secundario)
     GRIS_CLARO     = "#8C8C8C"    # neutro (captions)
@@ -111,7 +112,6 @@ else:  # STOP JEANS
         "#D32F2F", "#EF5350", "#FF8A80", "#8B0000", "#555555",
     ]
     FILL_INTERVALO = "rgba(200,16,46,0.12)"
-    SIDEBAR_BG     = "#FFF5F5"
 
 
 # ─── Carga de datos (cacheada) ─────────────────────────────────────────
@@ -211,7 +211,7 @@ st.markdown(f"""
         padding: 1rem 0 0.5rem 0;
     }}
     [data-testid="stSidebar"] {{
-        background-color: {NEGRO};
+        background-color: {SIDEBAR_BG};
         border-right: 3px solid {ACENTO};
     }}
     [data-testid="stSidebar"] p,
