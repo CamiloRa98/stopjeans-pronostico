@@ -761,6 +761,8 @@ elif pagina == "🏢 Visión Total":
             fechas_pron_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
             todos_meses_2026 = sorted(set(fechas_real + fechas_curso + fechas_pron_anio))
             crec_data = {}
+            totales_2026 = {}
+            totales_2025 = {}
             for f_2026 in todos_meses_2026:
                 f_2025 = f_2026 - pd.DateOffset(years=1)
                 lbl = f_2026.strftime("%b %Y")
@@ -777,15 +779,18 @@ elif pagina == "🏢 Visión Total":
                 ].groupby("Linea")["Cantidad"].sum().reindex(LINEAS_ACTIVAS).fillna(0)
                 crec = ((val_2026 - val_2025) / val_2025.replace(0, 1) * 100).round(1)
                 crec_data[lbl] = crec
+                totales_2026[lbl] = val_2026.sum()
+                totales_2025[lbl] = val_2025.sum()
 
             if crec_data:
                 df_crec = pd.DataFrame(crec_data)
                 df_crec["_orden"] = df_crec.index.map(lambda x: orden_idx.get(x, 999))
                 df_crec = df_crec.sort_values("_orden").drop(columns=["_orden"])
                 total_crec = pd.Series({
-                    col: (df_crec[col].mean() if df_crec[col].notna().any() else 0)
+                    col: round((totales_2026[col] - totales_2025[col]) / totales_2025[col] * 100, 1)
+                    if totales_2025[col] > 0 else 0
                     for col in df_crec.columns
-                }, name="PROMEDIO")
+                }, name="TOTAL")
                 df_crec = pd.concat([df_crec, total_crec.to_frame().T])
 
                 def color_crec(val):
