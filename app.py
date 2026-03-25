@@ -123,7 +123,7 @@ def cargar_historico(path):
 
 
 @st.cache_data(ttl=60)
-def cargar_pronostico(path, aplicar_vp=False):
+def cargar_pronostico(path):
     df = pd.read_csv(path)
     df["fecha"] = pd.to_datetime(df["fecha"])
     df["Cantidad_Pronosticada"] = df["Cantidad_Pronosticada"].clip(lower=0)
@@ -133,11 +133,6 @@ def cargar_pronostico(path, aplicar_vp=False):
         df["Limite_Superior"] = df["Cantidad_Pronosticada"]
     df["Limite_Inferior"] = df["Limite_Inferior"].clip(lower=0)
     df["Limite_Superior"] = df["Limite_Superior"].clip(lower=0)
-    if aplicar_vp and "Ajuste_Venta_Perdida_Pct" in df.columns:
-        factor = 1 + df["Ajuste_Venta_Perdida_Pct"]
-        df["Cantidad_Pronosticada"] = (df["Cantidad_Pronosticada"] * factor).round(0).astype(int)
-        df["Limite_Inferior"]       = (df["Limite_Inferior"]       * factor).round(0).astype(int)
-        df["Limite_Superior"]       = (df["Limite_Superior"]       * factor).round(0).astype(int)
     return df
 
 
@@ -146,7 +141,7 @@ if not RUTAS["pronostico"].exists() or not RUTAS["historico"].exists():
     st.stop()
 
 hist = cargar_historico(str(RUTAS["historico"]))
-pron = cargar_pronostico(str(RUTAS["pronostico"]), aplicar_vp=(marca_sel == "STOP JEANS"))
+pron = cargar_pronostico(str(RUTAS["pronostico"]))
 
 # ─── Líneas problemáticas ──────────────────────────────────────────────
 LINEAS_ADVERTENCIA = set()
