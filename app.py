@@ -211,8 +211,27 @@ st.markdown(f"""
         padding: 1rem 0 0.5rem 0;
     }}
     [data-testid="stSidebar"] {{
-        background-color: {SIDEBAR_BG};
-        border-right: 2px solid {NEGRO};
+        background-color: {NEGRO};
+        border-right: 3px solid {ACENTO};
+    }}
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
+        color: rgba(255,255,255,0.85) !important;
+    }}
+    [data-testid="stSidebar"] hr {{
+        border-color: rgba(255,255,255,0.15);
+    }}
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {{
+        background-color: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.2);
+        color: white;
+    }}
+    [data-testid="stSidebar"] .stAlert {{
+        background-color: rgba(255,255,255,0.08);
     }}
     [data-testid="stMetric"] {{
         background-color: {BLANCO};
@@ -242,9 +261,10 @@ PLOTLY_LAYOUT = dict(
 )
 
 # ─── Sidebar: Navegación ───────────────────────────────────────────────
-logo_activo = LOGO_SVG if marca_sel == "STOP JEANS" else LOGO_SVG_YOYO
+logo_base = LOGO_SVG if marca_sel == "STOP JEANS" else LOGO_SVG_YOYO
+logo_activo = logo_base.replace('fill="black"', 'fill="white"')
 st.sidebar.markdown(f'<div class="logo-container">{logo_activo}</div>', unsafe_allow_html=True)
-st.sidebar.markdown(f'<p style="text-align:center; color:{GRIS_MEDIO}; font-size:0.85rem; margin-top:-0.5rem;">{marca_sel} — Pronóstico de Ventas</p>', unsafe_allow_html=True)
+st.sidebar.markdown(f'<p style="text-align:center; color:rgba(255,255,255,0.6); font-size:0.85rem; margin-top:-0.5rem;">{marca_sel} — Pronóstico de Ventas</p>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 pagina = st.sidebar.radio(
     "Navegación",
