@@ -665,57 +665,55 @@ elif pagina == "🏢 Visión Total":
         st.caption(f"**{anio}** — ✓ Real  · ~ Proyección cierre  · resto Pronóstico modelo")
         st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True)
 
-    # ── Tabla de crecimiento vs 2025 ──────────────────────────────────────
-    st.markdown("---")
-    st.subheader(f"Crecimiento vs {anio_pron - 1}")
+        # ── Tabla de crecimiento vs año anterior (solo para el año de pronóstico) ──
+        if anio == anio_pron:
+            st.markdown("---")
+            st.subheader(f"Crecimiento vs {anio_pron - 1}")
 
-    # Construir tabla de valores 2025 (mismo periodo)
-    fechas_real = [pd.Timestamp(f) for f in sorted(meses_cerrados)]
-    fechas_curso = [mes_curso_dt] if cols_curso else []
-    fechas_pron_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
-    todos_meses_2026 = sorted(set(fechas_real + fechas_curso + fechas_pron_anio))
-    crec_data = {}
-    for f_2026 in todos_meses_2026:
-        f_2025 = f_2026 - pd.DateOffset(years=1)
-        lbl = f_2026.strftime("%b %Y")
-        # Valor 2026
-        if f_2026 < primer_mes_pron:
-            val_2026 = hist_mensual[
-                (hist_mensual["fecha"] == f_2026) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
-            ].groupby("Linea")["Cantidad"].sum()
-        elif f_2026 == mes_curso_dt and cols_curso:
-            val_2026 = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"].reindex(LINEAS_ACTIVAS).fillna(0)
-        else:
-            val_2026 = pron_activo[pron_activo["fecha"] == f_2026].set_index("Linea")["Cantidad_Pronosticada"].reindex(LINEAS_ACTIVAS).fillna(0)
-        # Valor 2025
-        val_2025 = hist_mensual[
-            (hist_mensual["fecha"] == f_2025) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
-        ].groupby("Linea")["Cantidad"].sum().reindex(LINEAS_ACTIVAS).fillna(0)
+            fechas_real = [pd.Timestamp(f) for f in sorted(meses_cerrados)]
+            fechas_curso = [mes_curso_dt] if cols_curso else []
+            fechas_pron_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio_pron]
+            todos_meses_2026 = sorted(set(fechas_real + fechas_curso + fechas_pron_anio))
+            crec_data = {}
+            for f_2026 in todos_meses_2026:
+                f_2025 = f_2026 - pd.DateOffset(years=1)
+                lbl = f_2026.strftime("%b %Y")
+                if f_2026 < primer_mes_pron:
+                    val_2026 = hist_mensual[
+                        (hist_mensual["fecha"] == f_2026) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+                    ].groupby("Linea")["Cantidad"].sum()
+                elif f_2026 == mes_curso_dt and cols_curso:
+                    val_2026 = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"].reindex(LINEAS_ACTIVAS).fillna(0)
+                else:
+                    val_2026 = pron_activo[pron_activo["fecha"] == f_2026].set_index("Linea")["Cantidad_Pronosticada"].reindex(LINEAS_ACTIVAS).fillna(0)
+                val_2025 = hist_mensual[
+                    (hist_mensual["fecha"] == f_2025) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
+                ].groupby("Linea")["Cantidad"].sum().reindex(LINEAS_ACTIVAS).fillna(0)
+                crec = ((val_2026 - val_2025) / val_2025.replace(0, 1) * 100).round(1)
+                crec_data[lbl] = crec
 
-        crec = ((val_2026 - val_2025) / val_2025.replace(0, 1) * 100).round(1)
-        crec_data[lbl] = crec
+            if crec_data:
+                df_crec = pd.DataFrame(crec_data)
+                df_crec["_orden"] = df_crec.index.map(lambda x: orden_idx.get(x, 999))
+                df_crec = df_crec.sort_values("_orden").drop(columns=["_orden"])
+                total_crec = pd.Series({
+                    col: (df_crec[col].mean() if df_crec[col].notna().any() else 0)
+                    for col in df_crec.columns
+                }, name="PROMEDIO")
+                df_crec = pd.concat([df_crec, total_crec.to_frame().T])
 
-    if crec_data:
-        df_crec = pd.DataFrame(crec_data)
-        df_crec["_orden"] = df_crec.index.map(lambda x: orden_idx.get(x, 999))
-        df_crec = df_crec.sort_values("_orden").drop(columns=["_orden"])
-        total_crec = pd.Series({
-            col: ((df_crec[col].mean()) if df_crec[col].notna().any() else 0)
-            for col in df_crec.columns
-        }, name="PROMEDIO")
-        df_crec = pd.concat([df_crec, total_crec.to_frame().T])
+                def color_crec(val):
+                    try:
+                        v = float(val)
+                        return "color: #2E7D32" if v > 0 else "color: #C8102E"
+                    except:
+                        return ""
 
-        def color_crec(val):
-            try:
-                v = float(val)
-                return "color: #2E7D32" if v > 0 else "color: #C8102E"
-            except:
-                return ""
-
-        st.dataframe(
-            df_crec.style.format("{:+.1f}%").applymap(color_crec),
-            use_container_width=True,
-        )
+                st.dataframe(
+                    df_crec.style.format("{:+.1f}%").applymap(color_crec),
+                    use_container_width=True,
+                )
+            st.markdown("---")
 
 
 # ═══════════════════════════════════════════════════════════════════════
