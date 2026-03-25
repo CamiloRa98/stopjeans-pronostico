@@ -286,6 +286,10 @@ pagina = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Datos históricos hasta: **{fecha_max_hist.strftime('%B %Y')}**")
 st.sidebar.caption(f"Pronóstico desde: **{primer_mes_pron.strftime('%B %Y')}**")
+if marca_sel == "STOP JEANS":
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Ajuste Venta Perdida: **4%–6%** aplicado")
+    st.sidebar.caption("(Abril = 0%)")
 if LINEAS_ADVERTENCIA:
     st.sidebar.warning(f"Líneas excluidas: {', '.join(sorted(LINEAS_ADVERTENCIA))}")
 
@@ -526,6 +530,10 @@ elif pagina == "📈 Pronóstico por Línea":
         })
         fmt = {"Pronóstico": "{:,.0f}", "Lím. Inferior": "{:,.0f}", "Lím. Superior": "{:,.0f}"}
         cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior"]
+        if marca_sel == "STOP JEANS" and "Ajuste_Venta_Perdida_Pct" in pron_linea.columns:
+            tabla_pron["Ajuste VP"] = pron_linea["Ajuste_Venta_Perdida_Pct"].values
+            fmt["Ajuste VP"] = "{:.1f}%"
+            cols_mostrar = ["Mes", "Pronóstico", "Lím. Inferior", "Lím. Superior", "Ajuste VP"]
 
         for anio in sorted(tabla_pron["fecha"].dt.year.unique()):
             bloque = tabla_pron[tabla_pron["fecha"].dt.year == anio][cols_mostrar].copy()
@@ -653,6 +661,29 @@ elif pagina == "🏢 Visión Total":
             texttemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percentRoot:.1%}",
         )
         st.plotly_chart(fig_tree, use_container_width=True)
+
+    if marca_sel == "STOP JEANS" and "Ajuste_Venta_Perdida_Pct" in pron_activo.columns:
+        st.markdown("---")
+        st.subheader("Ajuste por Venta Perdida por Mes")
+        vp_mensual = pron_activo.groupby("fecha")["Ajuste_Venta_Perdida_Pct"].mean().reset_index()
+        vp_mensual["Mes"] = vp_mensual["fecha"].dt.strftime("%b %Y")
+        fig_vp = px.bar(
+            vp_mensual, x="Mes", y="Ajuste_Venta_Perdida_Pct",
+            text="Ajuste_Venta_Perdida_Pct",
+            color_discrete_sequence=[ACENTO],
+        )
+        fig_vp.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        avg_vp = vp_mensual["Ajuste_Venta_Perdida_Pct"].mean()
+        fig_vp.add_hline(y=avg_vp, line_dash="dash", line_color=GRIS_CLARO,
+                         annotation_text=f"Promedio: {avg_vp:.1f}%", annotation_position="top right")
+        fig_vp.update_layout(
+            height=320, showlegend=False,
+            xaxis_title="", yaxis_title="% Ajuste VP",
+            margin=dict(l=50, r=20, t=10, b=60),
+            xaxis_tickangle=-45,
+            **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(fig_vp, use_container_width=True)
 
     st.subheader("Composición del Pronóstico por Línea")
     st.caption("Real (meses cerrados) · Proyección (mes en curso) · Pronóstico (meses futuros)")
