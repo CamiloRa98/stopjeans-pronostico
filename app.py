@@ -233,8 +233,11 @@ st.markdown(f"""
         border-color: rgba(255,255,255,0.2);
         color: white;
     }}
-    [data-testid="stSidebar"] .stAlert {{
-        background-color: rgba(255,255,255,0.08);
+    [data-testid="stSidebar"] .stAlert,
+    [data-testid="stSidebar"] .stAlert * {{
+        background-color: rgba(255,255,255,0.15) !important;
+        color: rgba(255,255,255,0.95) !important;
+        border-color: rgba(255,255,255,0.3) !important;
     }}
     [data-testid="stMetric"] {{
         background-color: {BLANCO};
