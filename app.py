@@ -685,9 +685,9 @@ elif pagina == "🏢 Visión Total":
 
     # Mes en curso: solo proyección (sin parcial)
     cols_curso = {}
-    if df_cierre_nb is not None and "Proyeccion_Cierre" in df_cierre_nb.columns:
+    if df_cierre_nb is not None and "Pronostico_Modelo" in df_cierre_nb.columns:
         lbl_curso = mes_curso_dt.strftime("%b %Y") + " ~"
-        cols_curso[lbl_curso] = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"]
+        cols_curso[lbl_curso] = df_cierre_nb.set_index("Linea")["Pronostico_Modelo"]
 
     # Pronóstico (meses futuros) separado por año
     fechas_ord = sorted(pron_activo["fecha"].unique())
@@ -743,7 +743,7 @@ elif pagina == "🏢 Visión Total":
                         (hist_mensual["fecha"] == f_2026) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
                     ].groupby("Linea")["Cantidad"].sum()
                 elif f_2026 == mes_curso_dt and cols_curso:
-                    val_2026 = df_cierre_nb.set_index("Linea")["Proyeccion_Cierre"].reindex(LINEAS_ACTIVAS).fillna(0)
+                    val_2026 = df_cierre_nb.set_index("Linea")["Pronostico_Modelo"].reindex(LINEAS_ACTIVAS).fillna(0)
                 else:
                     val_2026 = pron_activo[pron_activo["fecha"] == f_2026].set_index("Linea")["Cantidad_Pronosticada"].reindex(LINEAS_ACTIVAS).fillna(0)
                 val_2025 = hist_mensual[
