@@ -151,11 +151,11 @@ for linea in pron["Linea"].unique():
     if pct_ceros > 0.5 or vals.sum() < 500:
         LINEAS_ADVERTENCIA.add(linea)
 
-# Orden oficial de líneas de producto
+# Orden oficial de líneas de producto (recategorización 2026)
 ORDEN_LINEAS = [
-    "PANTALON", "CAMISETA", "BLUSA", "CORTOS", "SOBRETODO", "CALZADO",
-    "DEPORTIVO", "PANTALONES DE MODA", "ACCESORIOS", "PRODUCTOS DE MODA",
-    "ROPA INTERIOR", "MARROQUINERIA",
+    "JEANS", "CAMISETA", "BLUSA-CAMISA", "CORTOS", "SOBRETODOS", "CALZADO",
+    "DEPORTIVOS", "CORPORATIVOS", "PANTALONES", "ACCESORIOS", "PRENDAS DE MODA",
+    "ROPA INTERIOR", "BOLSAS", "TEJIDO", "TOP-BODY", "COMPLEMENTOS", "BEAUTY",
 ]
 
 def ordenar_lineas(lista):
