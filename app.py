@@ -938,8 +938,10 @@ elif pagina == "📆 Mes en Curso":
     st.subheader(f"Cierre Estimado por Línea — {mes_curso.strftime('%B %Y')} vs Año Anterior")
     df_g = df_curso.sort_values("Cierre_Estimado", ascending=True)
     colores_barra = [POSITIVO if v > 0 else NEGATIVO for v in df_g["Crecimiento_%"]]
+    _tot_cierre = df_g["Cierre_Estimado"].sum()
+    # Etiqueta: unidades · participación % · crecimiento %
     etiquetas = [
-        f"{c:,.0f}   ({g:+.1f}%)"
+        f"{c:,.0f}  ·  {(c / _tot_cierre * 100 if _tot_cierre else 0):.1f}% part.  ({g:+.1f}%)"
         for c, g in zip(df_g["Cierre_Estimado"], df_g["Crecimiento_%"])
     ]
     fig_curso = go.Figure()
@@ -951,18 +953,19 @@ elif pagina == "📆 Mes en Curso":
         text=etiquetas, textposition="outside", cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>Cierre estimado: %{x:,.0f}<extra></extra>",
     ))
-    # Marcador de referencia: real del mismo mes del año anterior
+    # Referencia discreta: real del mismo mes del año anterior (línea vertical fina)
     fig_curso.add_trace(go.Scatter(
         y=df_g["Linea"], x=df_g[col_real_ant],
         name=f"Real {mes_ant_ano.strftime('%b %Y')} (año anterior)",
         mode="markers",
-        marker=dict(size=11, symbol="diamond", color=GRIS_OSCURO, line=dict(width=1, color=BLANCO)),
+        marker=dict(size=16, symbol="line-ns", color=GRIS_MEDIO,
+                    line=dict(width=2, color=GRIS_MEDIO)),
         hovertemplate="<b>%{y}</b><br>Año anterior: %{x:,.0f}<extra></extra>",
     ))
     fig_curso.update_layout(
-        height=560, margin=dict(l=10, r=160, t=10, b=40),
+        height=560, margin=dict(l=10, r=210, t=10, b=40),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis_title="Unidades  —  barra = cierre estimado · ♦ = año anterior  ·  verde sube / rojo cae vs año anterior",
+        xaxis_title="Unidades  —  barra = cierre estimado · │ = año anterior  ·  verde sube / rojo cae vs año anterior",
         **PLOTLY_LAYOUT,
     )
     st.plotly_chart(fig_curso, use_container_width=True)
