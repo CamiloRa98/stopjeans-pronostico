@@ -935,65 +935,37 @@ elif pagina == "📆 Mes en Curso":
 
     st.markdown("---")
 
-    col_g1, col_g2 = st.columns([3, 2])
-
-    with col_g1:
-        st.subheader("Comparativa por Línea")
-        fig_curso = go.Figure()
-        fig_curso.add_trace(go.Bar(
-            y=df_curso["Linea"], x=df_curso["Venta_Parcial"],
-            name=f"Venta al día {dia_corte}",
-            orientation="h", marker_color=GRIS_MUY_CLARO,
-            text=df_curso["Venta_Parcial"].apply(lambda x: f"{x:,.0f}"),
-            textposition="inside",
-        ))
-        fig_curso.add_trace(go.Bar(
-            y=df_curso["Linea"], x=df_curso[col_real_ant],
-            name=f"Real {mes_ant_ano.strftime('%b %Y')}",
-            orientation="h", marker_color=GRIS_MEDIO,
-            text=df_curso[col_real_ant].apply(lambda x: f"{x:,.0f}"),
-            textposition="inside",
-        ))
-        fig_curso.add_trace(go.Scatter(
-            y=df_curso["Linea"], x=df_curso["Proyeccion_Cierre"],
-            name="Proyección Cierre",
-            mode="markers",
-            marker=dict(size=10, symbol="diamond", color=GRIS_OSCURO, line=dict(width=1, color=BLANCO)),
-            hovertemplate="<b>%{y}</b><br>Proyección: %{x:,.0f}<extra></extra>",
-        ))
-        if tiene_modelo:
-            fig_curso.add_trace(go.Scatter(
-                y=df_curso["Linea"], x=df_curso["Cierre_Estimado"],
-                name="Cierre Estimado",
-                mode="markers",
-                marker=dict(size=13, symbol="star", color=ACENTO, line=dict(width=1, color=BLANCO)),
-                hovertemplate="<b>%{y}</b><br>Cierre estimado: %{x:,.0f}<extra></extra>",
-            ))
-        fig_curso.update_layout(
-            barmode="group", height=420,
-            margin=dict(l=10, r=20, t=10, b=30),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            xaxis_title="Unidades",
-            **PLOTLY_LAYOUT,
-        )
-        st.plotly_chart(fig_curso, use_container_width=True)
-
-    with col_g2:
-        st.subheader("Crecimiento vs Año Anterior")
-        df_crec_curso = df_curso[["Linea", "Crecimiento_%"]].sort_values("Crecimiento_%", ascending=True)
-        colores_crec = [POSITIVO if v > 0 else NEGATIVO for v in df_crec_curso["Crecimiento_%"]]
-        fig_crec = go.Figure(go.Bar(
-            y=df_crec_curso["Linea"], x=df_crec_curso["Crecimiento_%"],
-            orientation="h", marker_color=colores_crec,
-            text=df_crec_curso["Crecimiento_%"].apply(lambda x: f"{x:+.1f}%"),
-            textposition="outside",
-        ))
-        fig_crec.update_layout(
-            height=420, xaxis_title="% Crecimiento",
-            margin=dict(l=10, r=60, t=10, b=30),
-            **PLOTLY_LAYOUT,
-        )
-        st.plotly_chart(fig_crec, use_container_width=True)
+    st.subheader(f"Cierre Estimado por Línea — {mes_curso.strftime('%B %Y')} vs Año Anterior")
+    df_g = df_curso.sort_values("Cierre_Estimado", ascending=True)
+    colores_barra = [POSITIVO if v > 0 else NEGATIVO for v in df_g["Crecimiento_%"]]
+    etiquetas = [
+        f"{c:,.0f}   ({g:+.1f}%)"
+        for c, g in zip(df_g["Cierre_Estimado"], df_g["Crecimiento_%"])
+    ]
+    fig_curso = go.Figure()
+    # Barra principal: Cierre Estimado, coloreada según crecimiento vs año anterior
+    fig_curso.add_trace(go.Bar(
+        y=df_g["Linea"], x=df_g["Cierre_Estimado"],
+        name="Cierre Estimado (este año)",
+        orientation="h", marker_color=colores_barra,
+        text=etiquetas, textposition="outside", cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>Cierre estimado: %{x:,.0f}<extra></extra>",
+    ))
+    # Marcador de referencia: real del mismo mes del año anterior
+    fig_curso.add_trace(go.Scatter(
+        y=df_g["Linea"], x=df_g[col_real_ant],
+        name=f"Real {mes_ant_ano.strftime('%b %Y')} (año anterior)",
+        mode="markers",
+        marker=dict(size=11, symbol="diamond", color=GRIS_OSCURO, line=dict(width=1, color=BLANCO)),
+        hovertemplate="<b>%{y}</b><br>Año anterior: %{x:,.0f}<extra></extra>",
+    ))
+    fig_curso.update_layout(
+        height=560, margin=dict(l=10, r=160, t=10, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis_title="Unidades  —  barra = cierre estimado · ♦ = año anterior  ·  verde sube / rojo cae vs año anterior",
+        **PLOTLY_LAYOUT,
+    )
+    st.plotly_chart(fig_curso, use_container_width=True)
 
     # Tabla detallada
     st.subheader("Detalle por Línea")
