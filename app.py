@@ -70,15 +70,34 @@ ARCHIVOS_MARCA = {
 
 
 # ─── Selector de marca (sidebar anticipado) ────────────────────────────
+OPCIONES_MARCA = ["TOTAL COMPAÑÍA"] + list(ARCHIVOS_MARCA.keys())
 marca_sel = st.sidebar.selectbox(
     "Marca",
-    list(ARCHIVOS_MARCA.keys()),
+    OPCIONES_MARCA,
     index=0,
 )
-RUTAS = ARCHIVOS_MARCA[marca_sel]
+ES_TOTAL = marca_sel == "TOTAL COMPAÑÍA"
+RUTAS = None if ES_TOTAL else ARCHIVOS_MARCA[marca_sel]
 
 # ─── Paleta de colores dinámica por marca ──────────────────────────────
-if marca_sel == "YOYO JEANS":
+if ES_TOTAL:
+    NEGRO          = "#0B1F33"    # navy near-black (corporativo)
+    SIDEBAR_BG     = "#13293D"    # azul petróleo (sidebar)
+    GRIS_OSCURO    = "#1A1A1A"
+    GRIS_MEDIO     = "#4A4A4A"
+    GRIS_CLARO     = "#8C8C8C"
+    GRIS_MUY_CLARO = "#E6EEF5"    # azul muy claro (fondos)
+    ACENTO         = "#1565C0"    # azul corporativo
+    ACENTO_SUAVE   = "#42A5F5"
+    NEGATIVO       = "#C62828"
+    ESCALA_MARCA   = ["#E6EEF5", "#90CAF9", "#42A5F5", "#1565C0", "#0B1F33"]
+    ESCALA_BARRAS  = ["#E6EEF5", "#0B1F33"]
+    PALETA_LINEAS  = [
+        "#0B1F33", "#13293D", "#1565C0", "#1976D2", "#42A5F5",
+        "#90CAF9", "#B0BEC5", "#607D8B", "#37474F", "#C9A227",
+    ]
+    FILL_INTERVALO = "rgba(21,101,192,0.12)"
+elif marca_sel == "YOYO JEANS":
     NEGRO          = "#1A001A"    # near-black violeta
     SIDEBAR_BG     = "#6A0062"    # violeta medio (sidebar)
     GRIS_OSCURO    = "#1A1A1A"    # neutro (texto)
@@ -136,12 +155,54 @@ def cargar_pronostico(path):
     return df
 
 
-if not RUTAS["pronostico"].exists() or not RUTAS["historico"].exists():
-    st.warning(f"Los datos de **{marca_sel}** aún no están disponibles. Ejecuta el notebook con `MARCA_ACTIVA = '{marca_sel}'` y sube los CSV al repositorio.")
-    st.stop()
+def _cargar_marca(rutas):
+    h = cargar_historico(str(rutas["historico"]))
+    p = cargar_pronostico(str(rutas["pronostico"]))
+    c = pd.read_csv(rutas["cierre"]) if rutas["cierre"].exists() else None
+    return h, p, c
 
-hist = cargar_historico(str(RUTAS["historico"]))
-pron = cargar_pronostico(str(RUTAS["pronostico"]))
+if ES_TOTAL:
+    faltan = [m for m, r in ARCHIVOS_MARCA.items()
+              if not r["pronostico"].exists() or not r["historico"].exists()]
+    if faltan:
+        st.warning(f"Faltan datos de: {', '.join(faltan)}. Sube los CSV de ambas marcas para ver el total compañía.")
+        st.stop()
+    _hs, _ps, _cs = [], [], []
+    for _m, _r in ARCHIVOS_MARCA.items():
+        _h, _p, _c = _cargar_marca(_r)
+        _hs.append(_h); _ps.append(_p)
+        if _c is not None:
+            _cs.append(_c)
+    hist = pd.concat(_hs, ignore_index=True)
+    # Pronóstico combinado: sumar por (fecha, Línea) a través de ambas marcas
+    _pc = pd.concat(_ps, ignore_index=True)
+    _agg = {"Cantidad_Pronosticada": "sum", "Limite_Inferior": "sum", "Limite_Superior": "sum"}
+    if "Ajuste_Venta_Perdida_Pct" in _pc.columns:
+        _agg["Ajuste_Venta_Perdida_Pct"] = "mean"
+    pron = _pc.groupby(["fecha", "Linea"], as_index=False).agg(_agg)
+    pron["Modelo"] = "(STOP+YOYO)"
+    pron["Factor_Peso"] = 0
+    # Cierre combinado del mes en curso: sumar por Línea
+    if _cs:
+        _cc = pd.concat(_cs, ignore_index=True)
+        _aggc = {c: "sum" for c in ["Venta_Real_Parcial", "Proyeccion_Cierre",
+                 "Pronostico_Modelo", "Diferencia", "Cierre_Estimado",
+                 "Cierre_Con_Venta_Perdida"] if c in _cc.columns}
+        for c in ["Dias_Transcurridos", "Dias_Totales_Mes"]:
+            if c in _cc.columns:
+                _aggc[c] = "first"
+        if "Ajuste_Venta_Perdida_Pct" in _cc.columns:
+            _aggc["Ajuste_Venta_Perdida_Pct"] = "mean"
+        df_cierre_nb = _cc.groupby("Linea", as_index=False).agg(_aggc)
+    else:
+        df_cierre_nb = None
+else:
+    if not RUTAS["pronostico"].exists() or not RUTAS["historico"].exists():
+        st.warning(f"Los datos de **{marca_sel}** aún no están disponibles. Ejecuta el notebook y sube los CSV al repositorio.")
+        st.stop()
+    hist = cargar_historico(str(RUTAS["historico"]))
+    pron = cargar_pronostico(str(RUTAS["pronostico"]))
+    df_cierre_nb = pd.read_csv(RUTAS["cierre"]) if RUTAS["cierre"].exists() else None
 
 # ─── Líneas problemáticas ──────────────────────────────────────────────
 LINEAS_ADVERTENCIA = set()
@@ -181,8 +242,7 @@ fecha_max_hist = hist["fecha"].max()
 primer_mes_pron = pron_activo["fecha"].min()
 
 # ─── Cierre mes en curso (global para todas las páginas) ───────────────
-CIERRE_CSV = RUTAS["cierre"]
-df_cierre_nb = pd.read_csv(CIERRE_CSV) if CIERRE_CSV.exists() else None
+# df_cierre_nb ya quedó definido en la carga de datos (arriba)
 
 # ─── Estilos CSS — Paleta STOP JEANS ──────────────────────────────────
 st.markdown(f"""
@@ -273,10 +333,16 @@ PLOTLY_LAYOUT = dict(
 )
 
 # ─── Sidebar: Navegación ───────────────────────────────────────────────
-logo_base = LOGO_SVG if marca_sel == "STOP JEANS" else LOGO_SVG_YOYO
-logo_activo = logo_base.replace('fill="black"', 'fill="white"')
-st.sidebar.markdown(f'<div class="logo-container">{logo_activo}</div>', unsafe_allow_html=True)
-st.sidebar.markdown(f'<p style="text-align:center; color:rgba(255,255,255,0.6); font-size:0.85rem; margin-top:-0.5rem;">{marca_sel} — Pronóstico de Ventas</p>', unsafe_allow_html=True)
+if ES_TOTAL:
+    st.sidebar.markdown(
+        '<div class="logo-container"><span style="color:white; font-size:1.5rem; font-weight:800; letter-spacing:1px;">TOTAL COMPAÑÍA</span></div>',
+        unsafe_allow_html=True)
+else:
+    logo_base = LOGO_SVG if marca_sel == "STOP JEANS" else LOGO_SVG_YOYO
+    logo_activo = logo_base.replace('fill="black"', 'fill="white"')
+    st.sidebar.markdown(f'<div class="logo-container">{logo_activo}</div>', unsafe_allow_html=True)
+_subtitulo = "STOP JEANS + YOYO JEANS" if ES_TOTAL else marca_sel
+st.sidebar.markdown(f'<p style="text-align:center; color:rgba(255,255,255,0.6); font-size:0.85rem; margin-top:-0.5rem;">{_subtitulo} — Pronóstico de Ventas</p>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 pagina = st.sidebar.radio(
     "Navegación",
