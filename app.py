@@ -180,6 +180,10 @@ if ES_TOTAL:
     if "Ajuste_Venta_Perdida_Pct" in _pc.columns:
         _agg["Ajuste_Venta_Perdida_Pct"] = "mean"
     pron = _pc.groupby(["fecha", "Linea"], as_index=False).agg(_agg)
+    # Solo meses donde TODAS las marcas tienen pronóstico, para no mostrar un
+    # primer mes incompleto (p. ej. junio solo con STOP). Junio se ve en "Mes en Curso".
+    _inicio_comun = max(p["fecha"].min() for p in _ps)
+    pron = pron[pron["fecha"] >= _inicio_comun].reset_index(drop=True)
     pron["Modelo"] = "(STOP+YOYO)"
     pron["Factor_Peso"] = 0
     # Cierre combinado del mes en curso: sumar por Línea
