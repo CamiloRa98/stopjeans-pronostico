@@ -404,46 +404,33 @@ if pagina == "📊 Resumen Ejecutivo":
 
     st.markdown("---")
 
-    col_left, col_right = st.columns([3, 2])
-
-    with col_left:
-        st.subheader(f"Volumen por Línea — {mes_sel.strftime('%B %Y')}")
-        df_mes_sel = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Cantidad_Pronosticada"]].copy()
-        # Orden fijo de líneas (invertido para barras horizontales)
-        orden_activas_rev = list(reversed(LINEAS_ACTIVAS))
-        df_mes_sel["Linea"] = pd.Categorical(df_mes_sel["Linea"], categories=orden_activas_rev, ordered=True)
-        df_mes_sel = df_mes_sel.sort_values("Linea")
-        fig = px.bar(
-            df_mes_sel, x="Cantidad_Pronosticada", y="Linea",
-            orientation="h",
-            color="Cantidad_Pronosticada",
-            color_continuous_scale=ESCALA_BARRAS,
-            text="Cantidad_Pronosticada",
-        )
-        fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
-        fig.update_layout(
-            height=400, showlegend=False, coloraxis_showscale=False,
-            xaxis_title="Unidades Pronosticadas", yaxis_title="",
-            margin=dict(l=10, r=80, t=10, b=30),
-            **PLOTLY_LAYOUT,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_right:
-        st.subheader(f"Participación por Línea — {mes_sel.strftime('%B %Y')}")
-        df_part = pron_activo[pron_activo["fecha"] == mes_sel].groupby("Linea")["Cantidad_Pronosticada"].sum().reset_index()
-        # Orden fijo
-        df_part["Linea"] = pd.Categorical(df_part["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
-        df_part = df_part.sort_values("Linea")
-        fig2 = px.pie(
-            df_part, values="Cantidad_Pronosticada", names="Linea",
-            color_discrete_sequence=PALETA_LINEAS,
-            hole=0.4,
-        )
-        fig2.update_traces(textposition="inside", textinfo="percent+label")
-        fig2.update_layout(height=400, showlegend=False, margin=dict(l=10, r=10, t=10, b=10),
-                           paper_bgcolor=BLANCO)
-        st.plotly_chart(fig2, use_container_width=True)
+    st.subheader(f"Volumen por Línea — {mes_sel.strftime('%B %Y')}")
+    df_mes_sel = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Cantidad_Pronosticada"]].copy()
+    # Participación (%) de cada línea sobre el total del mes
+    _total_mes = df_mes_sel["Cantidad_Pronosticada"].sum()
+    df_mes_sel["Pct"] = (df_mes_sel["Cantidad_Pronosticada"] / _total_mes * 100) if _total_mes else 0
+    # Etiqueta combinada: unidades + participación %
+    df_mes_sel["Etiqueta"] = df_mes_sel.apply(
+        lambda r: f"{r['Cantidad_Pronosticada']:,.0f}  ({r['Pct']:.1f}%)", axis=1)
+    # Orden fijo de líneas (invertido para barras horizontales)
+    orden_activas_rev = list(reversed(LINEAS_ACTIVAS))
+    df_mes_sel["Linea"] = pd.Categorical(df_mes_sel["Linea"], categories=orden_activas_rev, ordered=True)
+    df_mes_sel = df_mes_sel.sort_values("Linea")
+    fig = px.bar(
+        df_mes_sel, x="Cantidad_Pronosticada", y="Linea",
+        orientation="h",
+        color="Cantidad_Pronosticada",
+        color_continuous_scale=ESCALA_BARRAS,
+        text="Etiqueta",
+    )
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        height=520, showlegend=False, coloraxis_showscale=False,
+        xaxis_title="Unidades Pronosticadas (participación %)", yaxis_title="",
+        margin=dict(l=10, r=150, t=10, b=30),
+        **PLOTLY_LAYOUT,
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader(f"Detalle por Línea — {mes_sel.strftime('%B %Y')}")
     df_detalle_mes = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Modelo", "Cantidad_Pronosticada", "Limite_Inferior", "Limite_Superior"]].copy()
@@ -843,7 +830,7 @@ elif pagina == "🏢 Visión Total":
                         return ""
 
                 st.dataframe(
-                    df_crec.style.format("{:+.1f}%").applymap(color_crec),
+                    df_crec.style.format("{:+.1f}%").map(color_crec),
                     use_container_width=True,
                     height=494,
                 )
