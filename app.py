@@ -454,7 +454,7 @@ if pagina == "📊 Resumen Ejecutivo":
             "Lím. Inferior": "{:,.0f}",
             "Lím. Superior": "{:,.0f}",
         }),
-        use_container_width=True, hide_index=True, height=494,
+        use_container_width=True, hide_index=True, height=(len(df_detalle_mes_disp) + 1) * 35 + 3,
     )
 
     st.markdown("---")
@@ -484,7 +484,7 @@ if pagina == "📊 Resumen Ejecutivo":
         resumen_disp.rename(columns={"Total_2026": "Total 2026", "Total_2027": "Total 2027", "Total_12M": "Total 12M"}).style.format({
             "Total 2026": "{:,.0f}", "Total 2027": "{:,.0f}", "Total 12M": "{:,.0f}",
         }),
-        use_container_width=True, hide_index=True, height=494,
+        use_container_width=True, hide_index=True, height=(len(resumen_disp) + 1) * 35 + 3,
     )
     if LINEAS_ADVERTENCIA:
         st.markdown(f'<div class="warning-box">Las líneas <b>{", ".join(sorted(LINEAS_ADVERTENCIA))}</b> fueron excluidas del resumen por tener datos insuficientes o pronósticos con mayoría de ceros.</div>', unsafe_allow_html=True)
@@ -602,7 +602,7 @@ elif pagina == "📈 Pronóstico por Línea":
             }])
             bloque = pd.concat([bloque, subtotal], ignore_index=True)
             st.caption(f"**{anio}**")
-            st.dataframe(bloque.style.format(fmt), use_container_width=True, hide_index=True, height=494)
+            st.dataframe(bloque.style.format(fmt), use_container_width=True, hide_index=True, height=(len(bloque) + 1) * 35 + 3)
 
     with col_comp:
         st.subheader("Comparativa Interanual")
@@ -614,7 +614,7 @@ elif pagina == "📈 Pronóstico por Línea":
                 f"Real {ultimo_ano_hist['fecha'].dt.year.iloc[0]}": ultimo_ano_hist["Cantidad"].values,
             })
             st.dataframe(comp.style.format({col: "{:,.0f}" for col in comp.columns if col != "Mes"}),
-                         use_container_width=True, hide_index=True, height=494)
+                         use_container_width=True, hide_index=True, height=(len(comp) + 1) * 35 + 3)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -833,7 +833,7 @@ elif pagina == "🏢 Visión Total":
                 st.dataframe(
                     df_crec.style.format("{:+.1f}%").map(color_crec),
                     use_container_width=True,
-                    height=494,
+                    height=(len(df_crec) + 1) * 35 + 3,
                 )
             st.markdown("---")
 
@@ -996,7 +996,7 @@ elif pagina == "📆 Mes en Curso":
 
     st.dataframe(
         df_curso[cols_tabla].rename(columns=nombres_tabla).style.format(fmt_tabla),
-        use_container_width=True, hide_index=True, height=494,
+        use_container_width=True, hide_index=True, height=(len(df_curso) + 1) * 35 + 3,
     )
 
     nota_dia = f"día {dia_corte_default}" if df_cierre_nb is not None else f"día {dia_corte}"
