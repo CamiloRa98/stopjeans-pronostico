@@ -778,7 +778,8 @@ elif pagina == "🏢 Visión Total":
         total_row.name = "TOTAL"
         comp = pd.concat([comp, total_row.to_frame().T])
         st.caption(f"**{anio}** — ✓ Real  · ~ Proyección cierre  · resto Pronóstico modelo")
-        st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True, height=494)
+        st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True,
+                     height=(len(comp) + 1) * 35 + 3)
 
         # ── Tabla de crecimiento vs año anterior (solo para el año de pronóstico) ──
         if anio == anio_pron:
