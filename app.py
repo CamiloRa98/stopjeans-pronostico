@@ -606,13 +606,19 @@ elif pagina == "📈 Pronóstico por Línea":
 
     with col_comp:
         st.subheader("Comparativa Interanual")
-        st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
-        ultimo_ano_hist = hist_linea[hist_linea["fecha"] >= (fecha_max_hist - pd.DateOffset(months=11))]
-        if len(ultimo_ano_hist) > 0:
-            comp = pd.DataFrame({
-                "Mes": [f.strftime("%b") for f in ultimo_ano_hist["fecha"]],
-                f"Real {ultimo_ano_hist['fecha'].dt.year.iloc[0]}": ultimo_ano_hist["Cantidad"].values,
-            })
+        # Cada bloque compara el año pronosticado con el MISMO mes del año anterior,
+        # espejando los bloques de la izquierda (2026 vs 2025, 2027 vs 2026, ...).
+        _hidx = hist_linea.set_index(hist_linea["fecha"].dt.to_period("M"))["Cantidad"]
+        for anio in sorted(tabla_pron["fecha"].dt.year.unique()):
+            _meses = sorted(tabla_pron[tabla_pron["fecha"].dt.year == anio]["fecha"].dt.month.unique())
+            _prev = anio - 1
+            _filas = [{"Mes": pd.Timestamp(_prev, _m, 1).strftime("%b"),
+                       f"Real {_prev}": int(_hidx.get(pd.Period(f"{_prev}-{_m:02d}", freq="M"), 0))}
+                      for _m in _meses]
+            comp = pd.DataFrame(_filas)
+            comp = pd.concat([comp, pd.DataFrame([{"Mes": f"TOTAL {_prev}",
+                              f"Real {_prev}": comp[f"Real {_prev}"].sum()}])], ignore_index=True)
+            st.caption(f"**{anio} vs {_prev}**")
             st.dataframe(comp.style.format({col: "{:,.0f}" for col in comp.columns if col != "Mes"}),
                          use_container_width=True, hide_index=True, height=(len(comp) + 1) * 35 + 3)
 
