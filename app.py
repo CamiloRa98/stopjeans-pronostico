@@ -1089,8 +1089,15 @@ elif pagina == "💬 Asistente IA":
             with st.chat_message(_m["role"]):
                 st.markdown(_m["content"])
 
-        _prompt = st.chat_input("Escribe tu pregunta sobre el pronóstico…")
-        if _prompt:
+        with st.form(key=f"form_chat_{marca_sel}", clear_on_submit=True):
+            _prompt = st.text_input(
+                "Tu pregunta",
+                placeholder="Escribe tu pregunta sobre el pronóstico…",
+                label_visibility="collapsed",
+            )
+            _enviar = st.form_submit_button("Enviar ➤", use_container_width=True)
+
+        if _enviar and _prompt:
             st.session_state[_key].append({"role": "user", "content": _prompt})
             with st.chat_message("user"):
                 st.markdown(_prompt)
