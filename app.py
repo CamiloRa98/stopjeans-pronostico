@@ -1021,6 +1021,9 @@ elif pagina == "📆 Mes en Curso":
 # PÁGINA 5: ASISTENTE IA (Claude)
 # ═══════════════════════════════════════════════════════════════════════
 elif pagina == "💬 Asistente IA":
+    # Modelo de Claude a usar. Para cambiar a otro Sonnet, reemplaza solo este ID
+    # con el "Model ID" exacto de console.anthropic.com (p. ej. un futuro "Sonnet 5").
+    MODELO_IA = "claude-sonnet-4-6"
     st.markdown('<p class="main-header">💬 Asistente IA</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="sub-header">Pregunta en lenguaje natural sobre el pronóstico de <b>{marca_sel}</b>. Responde con base en los datos del dashboard.</p>', unsafe_allow_html=True)
 
@@ -1097,7 +1100,7 @@ elif pagina == "💬 Asistente IA":
                 def _stream_claude():
                     try:
                         with _client.messages.stream(
-                            model="claude-sonnet-4-6",
+                            model=MODELO_IA,
                             max_tokens=1024,
                             system=_system,
                             messages=[{"role": _m["role"], "content": _m["content"]} for _m in st.session_state[_key]],
