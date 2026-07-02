@@ -350,7 +350,7 @@ st.sidebar.markdown(f'<p style="text-align:center; color:rgba(255,255,255,0.6); 
 st.sidebar.markdown("---")
 pagina = st.sidebar.radio(
     "Navegación",
-    ["📊 Resumen Ejecutivo", "📈 Pronóstico por Línea", "🏢 Visión Total", "📆 Mes en Curso"],
+    ["📊 Resumen Ejecutivo", "📈 Pronóstico por Línea", "🏢 Visión Total", "📆 Mes en Curso", "💬 Asistente IA"],
     index=0,
 )
 st.sidebar.markdown("---")
@@ -1016,6 +1016,101 @@ elif pagina == "📆 Mes en Curso":
     )
 
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# PÁGINA 5: ASISTENTE IA (Claude)
+# ═══════════════════════════════════════════════════════════════════════
+elif pagina == "💬 Asistente IA":
+    st.markdown('<p class="main-header">💬 Asistente IA</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="sub-header">Pregunta en lenguaje natural sobre el pronóstico de <b>{marca_sel}</b>. Responde con base en los datos del dashboard.</p>', unsafe_allow_html=True)
+
+    import os
+    try:
+        _api_key = st.secrets.get("ANTHROPIC_API_KEY", None)
+    except Exception:
+        _api_key = None
+    _api_key = _api_key or os.environ.get("ANTHROPIC_API_KEY")
+
+    try:
+        import anthropic
+    except ImportError:
+        anthropic = None
+
+    if anthropic is None:
+        st.warning("Falta la librería `anthropic`. Agrégala a requirements.txt y vuelve a desplegar la app.")
+    elif not _api_key:
+        st.info(
+            "El asistente aún no está configurado. Agrega tu clave **ANTHROPIC_API_KEY** en "
+            "**Manage app → Settings → Secrets** de Streamlit Cloud (formato: `ANTHROPIC_API_KEY = \"sk-ant-...\"`) "
+            "y recarga la página."
+        )
+    else:
+        # --- Contexto de datos que ve el modelo (solo la marca seleccionada) ---
+        _ctx = [
+            f"Marca: {marca_sel}",
+            f"Horizonte del pronóstico: {primer_mes_pron.strftime('%Y-%m')} a {pron_activo['fecha'].max().strftime('%Y-%m')}",
+            f"Histórico disponible hasta: {fecha_max_hist.strftime('%Y-%m')}",
+        ]
+        _tot = pron_total.copy()
+        _tot["Mes"] = _tot["fecha"].dt.strftime("%Y-%m")
+        _ctx.append("PRONÓSTICO TOTAL MENSUAL (unidades):\n" + _tot[["Mes", "Cantidad_Pronosticada"]].to_string(index=False))
+        _piv = pron_activo.pivot_table(
+            index="Linea", columns=pron_activo["fecha"].dt.strftime("%Y-%m"),
+            values="Cantidad_Pronosticada", aggfunc="sum").fillna(0).astype(int)
+        _ctx.append("PRONÓSTICO POR LÍNEA Y MES (unidades):\n" + _piv.to_string())
+        if df_cierre_nb is not None:
+            _ctx.append("CIERRE DEL MES EN CURSO por línea (unidades):\n" + df_cierre_nb.to_string(index=False))
+        _contexto = "\n\n".join(_ctx)
+
+        _system = (
+            f"Eres un asistente de análisis de ventas para la marca {marca_sel}. "
+            "Respondes preguntas de gerencia sobre el pronóstico de ventas. "
+            "Usa EXCLUSIVAMENTE los datos que aparecen abajo; si la pregunta pide algo que no está en los datos, dilo con claridad en vez de inventar. "
+            "Las cifras están en unidades. Sé conciso y directo; usa tablas o viñetas cuando ayude. Responde en español.\n\n"
+            "=== DATOS DEL PRONÓSTICO ===\n" + _contexto
+        )
+
+        _key = f"chat_{marca_sel}"
+        if _key not in st.session_state:
+            st.session_state[_key] = []
+
+        _cols = st.columns([4, 1])
+        with _cols[1]:
+            if st.button("🗑️ Limpiar", use_container_width=True):
+                st.session_state[_key] = []
+
+        if not st.session_state[_key]:
+            st.caption("Ejemplos: *¿Cuál es la línea de mayor volumen en diciembre?* · *¿Cuánto suma el total de jul a dic?* · *¿Qué líneas pesan más?*")
+
+        for _m in st.session_state[_key]:
+            with st.chat_message(_m["role"]):
+                st.markdown(_m["content"])
+
+        _prompt = st.chat_input("Escribe tu pregunta sobre el pronóstico…")
+        if _prompt:
+            st.session_state[_key].append({"role": "user", "content": _prompt})
+            with st.chat_message("user"):
+                st.markdown(_prompt)
+            with st.chat_message("assistant"):
+                _client = anthropic.Anthropic(api_key=_api_key)
+
+                def _stream_claude():
+                    try:
+                        with _client.messages.stream(
+                            model="claude-sonnet-4-6",
+                            max_tokens=1024,
+                            system=_system,
+                            messages=[{"role": _m["role"], "content": _m["content"]} for _m in st.session_state[_key]],
+                        ) as _stream:
+                            for _text in _stream.text_stream:
+                                yield _text
+                    except Exception as _e:
+                        yield f"⚠️ No se pudo consultar el asistente: {_e}"
+
+                _resp = st.write_stream(_stream_claude())
+            st.session_state[_key].append({"role": "assistant", "content": _resp})
+
+
 # ─── Footer ────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown(f'<p style="text-align:center; color:{GRIS_CLARO}; font-size:0.8rem;">Proyecto Final — Especialización Inteligencia de Negocios | UPB | Pronóstico con skforecast + scikit-learn</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="text-align:center; color:{GRIS_CLARO}; font-size:0.8rem;">Pronóstico de ventas por línea · skforecast + scikit-learn · Asistente IA con Claude</p>', unsafe_allow_html=True)
