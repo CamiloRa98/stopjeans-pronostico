@@ -1063,14 +1063,38 @@ elif pagina == "💬 Asistente IA":
         _ctx.append("PRONÓSTICO POR LÍNEA Y MES (unidades):\n" + _piv.to_string())
         if df_cierre_nb is not None:
             _ctx.append("CIERRE DEL MES EN CURSO por línea (unidades):\n" + df_cierre_nb.to_string(index=False))
+
+        # --- Ventas REALES históricas (para responder sobre meses ya ocurridos) ---
+        _hist_act = hist_mensual[hist_mensual["Linea"].isin(LINEAS_ACTIVAS)]
+        _hist_tot = _hist_act.groupby("fecha")["Cantidad"].sum().reset_index()
+        _hist_tot["Mes"] = _hist_tot["fecha"].dt.strftime("%Y-%m")
+        _ctx.append(
+            "VENTAS REALES - TOTAL MENSUAL (unidades). El último mes es PARCIAL "
+            "(mes en curso); para ese mes usa el CIERRE ESTIMADO, no este parcial:\n"
+            + _hist_tot[["Mes", "Cantidad"]].to_string(index=False)
+        )
+        _anio_actual = fecha_max_hist.year
+        _hist_anio = _hist_act[_hist_act["fecha"].dt.year == _anio_actual]
+        if len(_hist_anio) > 0:
+            _piv_hist = _hist_anio.pivot_table(
+                index="Linea", columns=_hist_anio["fecha"].dt.strftime("%Y-%m"),
+                values="Cantidad", aggfunc="sum").fillna(0).astype(int)
+            _ctx.append(
+                f"VENTAS REALES POR LÍNEA Y MES en {_anio_actual} (unidades; "
+                f"el mes {fecha_max_hist.strftime('%Y-%m')} es parcial):\n" + _piv_hist.to_string()
+            )
         _contexto = "\n\n".join(_ctx)
 
         _system = (
             f"Eres un asistente de análisis de ventas para la marca {marca_sel}. "
-            "Respondes preguntas de gerencia sobre el pronóstico de ventas. "
+            "Respondes preguntas de gerencia sobre ventas y pronóstico. "
             "Usa EXCLUSIVAMENTE los datos que aparecen abajo; si la pregunta pide algo que no está en los datos, dilo con claridad en vez de inventar. "
-            "Las cifras están en unidades. Sé conciso y directo; usa tablas o viñetas cuando ayude. Responde en español.\n\n"
-            "=== DATOS DEL PRONÓSTICO ===\n" + _contexto
+            "Las cifras están en unidades. "
+            f"Para el TOTAL del año {_anio_actual} suma: ventas reales de los meses ya cerrados "
+            f"(enero hasta el mes anterior al actual) + CIERRE ESTIMADO del mes en curso ({fecha_max_hist.strftime('%Y-%m')}) "
+            "+ PRONÓSTICO de los meses futuros. No cuentes dos veces el mes en curso (aparece como real parcial y como cierre estimado; usa solo el cierre estimado). "
+            "Sé conciso y directo; usa tablas o viñetas cuando ayude. Responde en español.\n\n"
+            "=== DATOS ===\n" + _contexto
         )
 
         _key = f"chat_{marca_sel}"
