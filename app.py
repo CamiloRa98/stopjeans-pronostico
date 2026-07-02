@@ -1083,17 +1083,36 @@ elif pagina == "💬 Asistente IA":
                 f"VENTAS REALES POR LÍNEA Y MES en {_anio_actual} (unidades; "
                 f"el mes {fecha_max_hist.strftime('%Y-%m')} es parcial):\n" + _piv_hist.to_string()
             )
+        # Totales anuales reales por línea → tendencia multianual
+        _hist_anual = _hist_act.copy()
+        _hist_anual["Anio"] = _hist_anual["fecha"].dt.year
+        _piv_anual = _hist_anual.pivot_table(index="Linea", columns="Anio", values="Cantidad", aggfunc="sum").fillna(0).astype(int)
+        _ctx.append(
+            "VENTAS REALES ANUALES POR LÍNEA (unidades; el año en curso está incompleto, "
+            "no lo compares como año cerrado):\n" + _piv_anual.to_string()
+        )
+        # Año anterior por línea y mes → base para comparativo interanual
+        _hist_prev = _hist_act[_hist_act["fecha"].dt.year == _anio_actual - 1]
+        if len(_hist_prev) > 0:
+            _piv_prev = _hist_prev.pivot_table(
+                index="Linea", columns=_hist_prev["fecha"].dt.strftime("%Y-%m"),
+                values="Cantidad", aggfunc="sum").fillna(0).astype(int)
+            _ctx.append(f"VENTAS REALES POR LÍNEA Y MES en {_anio_actual - 1} (unidades):\n" + _piv_prev.to_string())
         _contexto = "\n\n".join(_ctx)
 
         _system = (
-            f"Eres un asistente de análisis de ventas para la marca {marca_sel}. "
-            "Respondes preguntas de gerencia sobre ventas y pronóstico. "
-            "Usa EXCLUSIVAMENTE los datos que aparecen abajo; si la pregunta pide algo que no está en los datos, dilo con claridad en vez de inventar. "
-            "Las cifras están en unidades. "
+            f"Eres un analista senior de inteligencia de negocios y planeación comercial de la marca {marca_sel}. "
+            "Tu interlocutor es la GERENCIA: no te limites a devolver cifras, INTERPRÉTALAS con visión estratégica. "
+            "En tus respuestas, cuando aporte valor: contextualiza con la variación vs. el año anterior (interanual), "
+            "la participación (%) de cada línea sobre el total, la estacionalidad (meses valle y pico), la concentración del volumen, "
+            "y señala tendencias, riesgos y oportunidades. Cuando sea pertinente, cierra con una recomendación o implicación accionable para el negocio. "
+            "Ajusta la profundidad a la pregunta: si es puntual, responde puntual con el dato y una lectura breve; si es abierta, entrega una lectura ejecutiva estructurada. "
+            "REGLAS DE DATOS (estrictas): usa EXCLUSIVAMENTE los datos de abajo; si algo no está, dilo con claridad en vez de inventar. Todas las cifras están en unidades. "
             f"Para el TOTAL del año {_anio_actual} suma: ventas reales de los meses ya cerrados "
             f"(enero hasta el mes anterior al actual) + CIERRE ESTIMADO del mes en curso ({fecha_max_hist.strftime('%Y-%m')}) "
             "+ PRONÓSTICO de los meses futuros. No cuentes dos veces el mes en curso (aparece como real parcial y como cierre estimado; usa solo el cierre estimado). "
-            "Sé conciso y directo; usa tablas o viñetas cuando ayude. Responde en español.\n\n"
+            "El año en curso está incompleto: no lo compares como si fuera un año cerrado salvo que uses la proyección total. "
+            "FORMATO: español, tono ejecutivo y directo, cifras con separador de miles, resalta lo relevante en negrita y usa tablas o viñetas cuando aclaren.\n\n"
             "=== DATOS ===\n" + _contexto
         )
 
