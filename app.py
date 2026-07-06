@@ -228,6 +228,81 @@ def ordenar_lineas(lista):
     orden_map = {l: i for i, l in enumerate(ORDEN_LINEAS)}
     return sorted(lista, key=lambda x: orden_map.get(x, 999))
 
+# ─── Clasificación por negocio: TEXTIL / NO TEXTIL ─────────────────────
+LINEAS_NO_TEXTIL = {"CALZADO", "ACCESORIOS", "COMPLEMENTOS", "BEAUTY", "BOLSAS"}
+
+def negocio_de(linea):
+    return "NO TEXTIL" if str(linea) in LINEAS_NO_TEXTIL else "TEXTIL"
+
+def ordenar_por_negocio(lista):
+    """Líneas del negocio TEXTIL primero, luego NO TEXTIL (cada grupo en orden oficial)."""
+    ordenadas = ordenar_lineas(lista)
+    return ([l for l in ordenadas if negocio_de(l) == "TEXTIL"] +
+            [l for l in ordenadas if negocio_de(l) == "NO TEXTIL"])
+
+def fmt_celda(v):
+    """Números con separador de miles; deja pasar textos (filas de subtotal)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return f"{v:,.0f}"
+    return v
+
+def fmt_pct(v):
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return f"{v:.1f}%"
+    return v
+
+def fmt_pct_signo(v):
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return f"{v:+.1f}%"
+    return v
+
+def estilo_fila_negocio(row):
+    """Resalta filas de subtotal de negocio y total general."""
+    nombre = str(row.iloc[0])
+    if nombre == "TOTAL":
+        return ["font-weight: bold; background-color: #E0E0E0"] * len(row)
+    if nombre.startswith("TOTAL "):
+        return ["font-weight: bold; background-color: #F2F2F2"] * len(row)
+    return [""] * len(row)
+
+def con_subtotales_negocio(df, col_linea="Linea", col_pct=None, recalc=None):
+    """Reordena por negocio (TEXTIL → NO TEXTIL) e inserta filas TOTAL TEXTIL,
+    TOTAL NO TEXTIL y TOTAL general. Si col_pct se indica, agrega 'Part. %' =
+    participación de cada línea DENTRO de su negocio. recalc permite recalcular
+    columnas (p. ej. crecimientos) en las filas de subtotal en vez de sumarlas."""
+    df = df.copy()
+    df[col_linea] = df[col_linea].astype(str)
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    orden_map = {l: i for i, l in enumerate(ORDEN_LINEAS)}
+    bloques = []
+    for neg in ["TEXTIL", "NO TEXTIL"]:
+        sub = df[df[col_linea].map(negocio_de) == neg].copy()
+        if sub.empty:
+            continue
+        sub = sub.sort_values(col_linea, key=lambda c: c.map(lambda x: orden_map.get(x, 999)))
+        if col_pct:
+            tot_neg = sub[col_pct].sum()
+            sub["Part. %"] = (sub[col_pct] / tot_neg * 100) if tot_neg else 0.0
+        fila = {c: "" for c in sub.columns}
+        fila[col_linea] = f"TOTAL {neg}"
+        for c in num_cols:
+            fila[c] = sub[c].sum()
+        if recalc:
+            for c, fn in recalc.items():
+                fila[c] = fn(sub)
+        if col_pct:
+            fila["Part. %"] = 100.0
+        bloques.append(pd.concat([sub, pd.DataFrame([fila])], ignore_index=True))
+    cols_final = df.columns.tolist() + (["Part. %"] if col_pct else [])
+    fila_total = {c: "" for c in cols_final}
+    fila_total[col_linea] = "TOTAL"
+    for c in num_cols:
+        fila_total[c] = df[c].sum()
+    if recalc:
+        for c, fn in recalc.items():
+            fila_total[c] = fn(df)
+    return pd.concat(bloques + [pd.DataFrame([fila_total])], ignore_index=True)
+
 LINEAS_ACTIVAS = ordenar_lineas([l for l in pron["Linea"].unique() if l not in LINEAS_ADVERTENCIA])
 TODAS_LINEAS = ordenar_lineas(list(pron["Linea"].unique()))
 
@@ -406,27 +481,30 @@ if pagina == "📊 Resumen Ejecutivo":
 
     st.subheader(f"Volumen por Línea — {mes_sel.strftime('%B %Y')}")
     df_mes_sel = pron_activo[pron_activo["fecha"] == mes_sel][["Linea", "Cantidad_Pronosticada"]].copy()
-    # Participación (%) de cada línea sobre el total del mes
-    _total_mes = df_mes_sel["Cantidad_Pronosticada"].sum()
-    df_mes_sel["Pct"] = (df_mes_sel["Cantidad_Pronosticada"] / _total_mes * 100) if _total_mes else 0
-    # Etiqueta combinada: unidades + participación %
+    # Participación (%) de cada línea DENTRO de su negocio (TEXTIL / NO TEXTIL)
+    df_mes_sel["Negocio"] = df_mes_sel["Linea"].map(negocio_de)
+    _tot_negocio = df_mes_sel.groupby("Negocio")["Cantidad_Pronosticada"].transform("sum")
+    df_mes_sel["Pct"] = (df_mes_sel["Cantidad_Pronosticada"] / _tot_negocio * 100).fillna(0)
+    # Etiqueta combinada: unidades + participación % dentro del negocio
     df_mes_sel["Etiqueta"] = df_mes_sel.apply(
         lambda r: f"{r['Cantidad_Pronosticada']:,.0f}  ({r['Pct']:.1f}%)", axis=1)
-    # Orden fijo de líneas (invertido para barras horizontales)
-    orden_activas_rev = list(reversed(LINEAS_ACTIVAS))
+    # Orden: TEXTIL arriba, NO TEXTIL abajo (invertido para barras horizontales)
+    orden_activas_rev = list(reversed(ordenar_por_negocio(LINEAS_ACTIVAS)))
     df_mes_sel["Linea"] = pd.Categorical(df_mes_sel["Linea"], categories=orden_activas_rev, ordered=True)
     df_mes_sel = df_mes_sel.sort_values("Linea")
     fig = px.bar(
         df_mes_sel, x="Cantidad_Pronosticada", y="Linea",
         orientation="h",
-        color="Cantidad_Pronosticada",
-        color_continuous_scale=ESCALA_BARRAS,
+        color="Negocio",
+        color_discrete_map={"TEXTIL": NEGRO, "NO TEXTIL": ACENTO},
+        category_orders={"Linea": orden_activas_rev},
         text="Etiqueta",
     )
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(
-        height=520, showlegend=False, coloraxis_showscale=False,
-        xaxis_title="Unidades Pronosticadas (participación %)", yaxis_title="",
+        height=520, showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=""),
+        xaxis_title="Unidades Pronosticadas (participación % dentro del negocio)", yaxis_title="",
         margin=dict(l=10, r=150, t=10, b=30),
         **PLOTLY_LAYOUT,
     )
@@ -441,19 +519,10 @@ if pagina == "📊 Resumen Ejecutivo":
         "Limite_Inferior": "Lím. Inferior",
         "Limite_Superior": "Lím. Superior",
     })
-    total_det = pd.DataFrame([{
-        "Linea": "TOTAL", "Modelo": "",
-        "Pronóstico": df_detalle_mes_disp["Pronóstico"].sum(),
-        "Lím. Inferior": df_detalle_mes_disp["Lím. Inferior"].sum(),
-        "Lím. Superior": df_detalle_mes_disp["Lím. Superior"].sum(),
-    }])
-    df_detalle_mes_disp = pd.concat([df_detalle_mes_disp, total_det], ignore_index=True)
+    df_detalle_mes_disp = con_subtotales_negocio(df_detalle_mes_disp, col_pct="Pronóstico")
     st.dataframe(
-        df_detalle_mes_disp.style.format({
-            "Pronóstico": "{:,.0f}",
-            "Lím. Inferior": "{:,.0f}",
-            "Lím. Superior": "{:,.0f}",
-        }),
+        df_detalle_mes_disp.style.format(fmt_celda).format(fmt_pct, subset=["Part. %"])
+            .apply(estilo_fila_negocio, axis=1),
         use_container_width=True, hide_index=True, height=(len(df_detalle_mes_disp) + 1) * 35 + 3,
     )
 
@@ -473,17 +542,12 @@ if pagina == "📊 Resumen Ejecutivo":
     resumen["Total_2027"] = resumen["Total_2027"].fillna(0).astype(int)
     resumen["Linea"] = pd.Categorical(resumen["Linea"], categories=LINEAS_ACTIVAS, ordered=True)
     resumen = resumen.sort_values("Linea")
-    total_res = pd.DataFrame([{
-        "Linea": "TOTAL", "Modelo": "",
-        "Total_2026": resumen["Total_2026"].sum(),
-        "Total_2027": resumen["Total_2027"].sum(),
-        "Total_12M": resumen["Total_12M"].sum(),
-    }])
-    resumen_disp = pd.concat([resumen[["Linea", "Modelo", "Total_2026", "Total_2027", "Total_12M"]], total_res], ignore_index=True)
+    resumen_disp = resumen[["Linea", "Modelo", "Total_2026", "Total_2027", "Total_12M"]].rename(
+        columns={"Total_2026": "Total 2026", "Total_2027": "Total 2027", "Total_12M": "Total 12M"})
+    resumen_disp = con_subtotales_negocio(resumen_disp, col_pct="Total 12M")
     st.dataframe(
-        resumen_disp.rename(columns={"Total_2026": "Total 2026", "Total_2027": "Total 2027", "Total_12M": "Total 12M"}).style.format({
-            "Total 2026": "{:,.0f}", "Total 2027": "{:,.0f}", "Total 12M": "{:,.0f}",
-        }),
+        resumen_disp.style.format(fmt_celda).format(fmt_pct, subset=["Part. %"])
+            .apply(estilo_fila_negocio, axis=1),
         use_container_width=True, hide_index=True, height=(len(resumen_disp) + 1) * 35 + 3,
     )
     if LINEAS_ADVERTENCIA:
@@ -712,22 +776,23 @@ elif pagina == "🏢 Visión Total":
     with col2:
         st.subheader("Distribución por Línea (Treemap)")
         df_tree = pron_activo.groupby("Linea")["Cantidad_Pronosticada"].sum().reset_index()
+        df_tree["Negocio"] = df_tree["Linea"].map(negocio_de)
         fig_tree = px.treemap(
-            df_tree, path=["Linea"], values="Cantidad_Pronosticada",
+            df_tree, path=["Negocio", "Linea"], values="Cantidad_Pronosticada",
             color="Cantidad_Pronosticada",
             color_continuous_scale=ESCALA_MARCA,
         )
         fig_tree.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10),
                                coloraxis_showscale=False, paper_bgcolor=BLANCO)
         fig_tree.update_traces(
-            textinfo="label+value+percent root",
-            texttemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percentRoot:.1%}",
+            textinfo="label+value+percent parent",
+            texttemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percentParent:.1%}",
         )
         st.plotly_chart(fig_tree, use_container_width=True)
 
     st.subheader("Composición del Pronóstico por Línea")
     st.caption("Real (meses cerrados) · Proyección (mes en curso) · Pronóstico (meses futuros)")
-    orden_idx = {l: i for i, l in enumerate(LINEAS_ACTIVAS)}
+    orden_idx = {l: i for i, l in enumerate(ordenar_por_negocio(LINEAS_ACTIVAS))}
 
     # ── Construir tabla combinada: Real + Proyección mes curso + Pronóstico ──
     anio_pron = primer_mes_pron.year  # año de inicio del pronóstico (2026)
@@ -778,13 +843,10 @@ elif pagina == "🏢 Visión Total":
             comp = comp[cols_ordenadas]
 
         comp["TOTAL"] = comp.sum(axis=1)
-        comp["_orden"] = comp.index.map(lambda x: orden_idx.get(x, 999))
-        comp = comp.sort_values("_orden").drop(columns=["_orden"])
-        total_row = comp.sum(numeric_only=True)
-        total_row.name = "TOTAL"
-        comp = pd.concat([comp, total_row.to_frame().T])
+        comp = con_subtotales_negocio(comp.reset_index())
         st.caption(f"**{anio}** — ✓ Real  · ~ Proyección cierre  · resto Pronóstico modelo")
-        st.dataframe(comp.style.format("{:,.0f}"), use_container_width=True,
+        st.dataframe(comp.style.format(fmt_celda).apply(estilo_fila_negocio, axis=1),
+                     use_container_width=True, hide_index=True,
                      height=(len(comp) + 1) * 35 + 3)
 
         # ── Tabla de crecimiento vs año anterior (solo para el año de pronóstico) ──
@@ -943,13 +1005,17 @@ elif pagina == "📆 Mes en Curso":
     st.markdown("---")
 
     st.subheader(f"Cierre Estimado por Línea — {mes_curso.strftime('%B %Y')} vs Año Anterior")
-    df_g = df_curso.sort_values("Cierre_Estimado", ascending=True)
+    df_g = df_curso.copy()
+    df_g["Negocio"] = df_g["Linea"].map(negocio_de)
+    _tot_neg_cierre = df_g.groupby("Negocio")["Cierre_Estimado"].transform("sum")
+    df_g["_pct_negocio"] = (df_g["Cierre_Estimado"] / _tot_neg_cierre * 100).fillna(0)
+    df_g = df_g.sort_values("Cierre_Estimado", ascending=True)
     colores_barra = [POSITIVO if v > 0 else NEGATIVO for v in df_g["Crecimiento_%"]]
-    _tot_cierre = df_g["Cierre_Estimado"].sum()
-    # Etiqueta: unidades · participación % · crecimiento %
+    # Etiqueta: unidades · participación % dentro del negocio · crecimiento %
     etiquetas = [
-        f"{c:,.0f}  ·  {(c / _tot_cierre * 100 if _tot_cierre else 0):.1f}% part.  ({g:+.1f}%)"
-        for c, g in zip(df_g["Cierre_Estimado"], df_g["Crecimiento_%"])
+        f"{c:,.0f}  ·  {p:.1f}% part. {n.lower()}  ({g:+.1f}%)"
+        for c, p, n, g in zip(df_g["Cierre_Estimado"], df_g["_pct_negocio"],
+                              df_g["Negocio"], df_g["Crecimiento_%"])
     ]
     fig_curso = go.Figure()
     # Barra principal: Cierre Estimado, coloreada según crecimiento vs año anterior
@@ -1000,9 +1066,19 @@ elif pagina == "📆 Mes en Curso":
         fmt_tabla["Cierre Estimado"]       = "{:,.0f}"
     cols_tabla += [col_real_ant, "Crecimiento_%"]
 
+    col_base_part = "Cierre_Estimado" if tiene_modelo else "Proyeccion_Cierre"
+    df_tabla_curso = con_subtotales_negocio(
+        df_curso[cols_tabla], col_pct=col_base_part,
+        recalc={"Crecimiento_%": lambda d: (
+            (d[col_base_part].sum() - d[col_real_ant].sum()) / d[col_real_ant].sum() * 100
+            if d[col_real_ant].sum() else 0.0)},
+    ).rename(columns=nombres_tabla)
     st.dataframe(
-        df_curso[cols_tabla].rename(columns=nombres_tabla).style.format(fmt_tabla),
-        use_container_width=True, hide_index=True, height=(len(df_curso) + 1) * 35 + 3,
+        df_tabla_curso.style.format(fmt_celda)
+            .format(fmt_pct_signo, subset=["Crecimiento %"])
+            .format(fmt_pct, subset=["Part. %"])
+            .apply(estilo_fila_negocio, axis=1),
+        use_container_width=True, hide_index=True, height=(len(df_tabla_curso) + 1) * 35 + 3,
     )
 
     nota_dia = f"día {dia_corte_default}" if df_cierre_nb is not None else f"día {dia_corte}"
@@ -1054,6 +1130,13 @@ elif pagina == "💬 Asistente IA":
             f"Horizonte del pronóstico: {primer_mes_pron.strftime('%Y-%m')} a {pron_activo['fecha'].max().strftime('%Y-%m')}",
             f"Histórico disponible hasta: {fecha_max_hist.strftime('%Y-%m')}",
         ]
+        _ctx.append(
+            "CLASIFICACIÓN POR NEGOCIO: NO TEXTIL = " + ", ".join(sorted(LINEAS_NO_TEXTIL)) +
+            ". Todas las demás líneas pertenecen al negocio TEXTIL. "
+            "IMPORTANTE: toda participación (%) de una línea se calcula DENTRO de su negocio "
+            "(una línea textil participa sobre el total TEXTIL; una no textil sobre el total NO TEXTIL), "
+            "nunca sobre el total general."
+        )
         _tot = pron_total.copy()
         _tot["Mes"] = _tot["fecha"].dt.strftime("%Y-%m")
         _ctx.append("PRONÓSTICO TOTAL MENSUAL (unidades):\n" + _tot[["Mes", "Cantidad_Pronosticada"]].to_string(index=False))
