@@ -820,6 +820,10 @@ elif pagina == "🏢 Visión Total":
     # Pronóstico (meses futuros) separado por año
     fechas_ord = sorted(pron_activo["fecha"].unique())
 
+    # El mes en curso ya viene en cols_curso (desde el cierre); si el pronostico
+    # tambien lo trae, la columna saldria dos veces y el TOTAL lo contaria doble.
+    fechas_ord = [f for f in pd.to_datetime(fechas_ord)
+                  if not (cols_curso and f == mes_curso_dt)]
     for anio in sorted(set(pd.to_datetime(fechas_ord).year)):
         fechas_anio = [f for f in pd.to_datetime(fechas_ord) if f.year == anio]
         pron_anio = pron_activo[pron_activo["fecha"].isin(fechas_anio)]
@@ -864,12 +868,16 @@ elif pagina == "🏢 Visión Total":
             for f_2026 in todos_meses_2026:
                 f_2025 = f_2026 - pd.DateOffset(years=1)
                 lbl = f_2026.strftime("%b %Y")
-                if f_2026 < primer_mes_pron:
+                # El mes en curso SIEMPRE sale del cierre, se evalua primero.
+                # Si se evalua "f_2026 < primer_mes_pron" antes, el mes en curso
+                # toma su venta PARCIAL del historico (p.ej. 3 dias) y la tabla
+                # de crecimiento lo muestra como una caida del 90%.
+                if f_2026 == mes_curso_dt and cols_curso:
+                    val_2026 = df_cierre_nb.set_index("Linea")["Pronostico_Modelo"].reindex(LINEAS_ACTIVAS).fillna(0)
+                elif f_2026 < primer_mes_pron:
                     val_2026 = hist_mensual[
                         (hist_mensual["fecha"] == f_2026) & (hist_mensual["Linea"].isin(LINEAS_ACTIVAS))
                     ].groupby("Linea")["Cantidad"].sum()
-                elif f_2026 == mes_curso_dt and cols_curso:
-                    val_2026 = df_cierre_nb.set_index("Linea")["Pronostico_Modelo"].reindex(LINEAS_ACTIVAS).fillna(0)
                 else:
                     val_2026 = pron_activo[pron_activo["fecha"] == f_2026].set_index("Linea")["Cantidad_Pronosticada"].reindex(LINEAS_ACTIVAS).fillna(0)
                 val_2025 = hist_mensual[
